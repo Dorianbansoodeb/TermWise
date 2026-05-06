@@ -172,7 +172,7 @@ final class AppState: ObservableObject {
     }
 
     var expectedTotalSaved: Double {
-        max(0, effectiveMonthlyLimit - totalNetSpend + bonusIncomeForMonth)
+        max(0, effectiveMonthlyLimit - totalActualSpend + bonusIncomeForMonth - totalSavedApplied)
     }
 
     var availableSavedToUse: Double {
