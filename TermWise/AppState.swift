@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 
-enum TransactionType: String, CaseIterable, Identifiable {
+enum TransactionType: String, Codable, CaseIterable, Identifiable {
     case expense = "Expense"
     case income = "Income"
 
