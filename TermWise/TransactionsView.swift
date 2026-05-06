@@ -50,13 +50,21 @@ struct TransactionsView: View {
                     let dayTransactions = groupedTransactions[day] ?? []
                     Section(day.formatted(date: .abbreviated, time: .omitted)) {
                         ForEach(dayTransactions) { transaction in
-                            transactionRow(transaction)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    trailingSwipeActions(for: transaction)
-                                }
-                                .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                    leadingSwipeActions(for: transaction)
-                                }
+                            TransactionListRow(
+                                transaction: transaction,
+                                currencyFormatter: appState.currencyFormatter,
+                                isPinned: pinnedIds.contains(transaction.id),
+                                isCompleted: completedIds.contains(transaction.id),
+                                amountText: signedAmountText(for: transaction),
+                                iconName: iconName(for: transaction.category),
+                                onDelete: { appState.deleteTransaction(id: transaction.id) },
+                                onArchive: { archivedIds.insert(transaction.id) },
+                                onMore: { moreActionsTarget = transaction },
+                                onMark: { toggleMembership(of: transaction.id, in: &markedIds) },
+                                onPin: { toggleMembership(of: transaction.id, in: &pinnedIds) },
+                                onComplete: { toggleMembership(of: transaction.id, in: &completedIds) },
+                                onSecondary: { duplicateIfExpense(transaction) }
+                            )
                         }
                     }
                 }
@@ -251,6 +259,93 @@ struct TransactionsView: View {
             note: "Duplicate: \(transaction.note)",
             type: .expense
         )
+    }
+}
+
+private struct TransactionListRow: View {
+    let transaction: TransactionItem
+    let currencyFormatter: FloatingPointFormatStyle<Double>.Currency
+    let isPinned: Bool
+    let isCompleted: Bool
+    let amountText: String
+    let iconName: String
+    let onDelete: () -> Void
+    let onArchive: () -> Void
+    let onMore: () -> Void
+    let onMark: () -> Void
+    let onPin: () -> Void
+    let onComplete: () -> Void
+    let onSecondary: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: iconName)
+                .foregroundStyle(.blue)
+                .frame(width: 30, height: 30)
+                .background(Color.blue.opacity(0.1))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(transaction.category)
+                    .fontWeight(.semibold)
+                Text(transaction.note.isEmpty ? "No note" : transaction.note)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                if transaction.type == .expense && transaction.savedApplied > 0 {
+                    Text("Used \(transaction.savedApplied.formatted(currencyFormatter)) from saved")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                }
+                if isPinned {
+                    Text("Pinned")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                }
+                if isCompleted {
+                    Text("Completed")
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+                }
+            }
+
+            Spacer()
+
+            Text(amountText)
+                .fontWeight(.bold)
+                .foregroundStyle(transaction.type == .expense ? .red : .green)
+        }
+        .padding(.vertical, 4)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+            Button(action: onArchive) {
+                Label("Archive", systemImage: "archivebox")
+            }
+            .tint(.gray)
+            Button(action: onMore) {
+                Label("More", systemImage: "ellipsis")
+            }
+            .tint(.blue)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button(action: onMark) {
+                Label("Mark", systemImage: "flag")
+            }
+            .tint(.orange)
+            Button(action: onPin) {
+                Label("Pin", systemImage: "pin")
+            }
+            .tint(.yellow)
+            Button(action: onComplete) {
+                Label("Complete", systemImage: "checkmark.circle")
+            }
+            .tint(.green)
+            Button(action: onSecondary) {
+                Label("Secondary", systemImage: "plus.rectangle.on.rectangle")
+            }
+            .tint(.indigo)
+        }
     }
 }
 
