@@ -10,28 +10,28 @@ struct ProfilePanelView: View {
     private let supportedCurrencies = ["USD", "CAD", "EUR", "GBP"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Profile & Goals")
-                .font(.headline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Profile & Goals")
+                    .font(.headline)
 
-            Text(appState.currentTerm)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                Text(appState.currentTerm)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
 
-            monthlyHistoryChart
+                monthlyHistoryChart
 
-            goalsSection
+                goalsSection
 
-            billsSection
+                weeklyNotesSection
 
-            weeklyNotesSection
+                recalculateSection
 
-            recalculateSection
-
-            currencySection
+                currencySection
+            }
+            .padding(12)
         }
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
+        .background(Color(.systemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onAppear {
             savingsSlider = appState.desiredSavingsRate
@@ -41,6 +41,8 @@ struct ProfilePanelView: View {
             MonthDetailPopup(month: month)
                 .environmentObject(appState)
         }
+        .navigationTitle("Profile")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var monthlyHistoryChart: some View {
@@ -190,36 +192,6 @@ struct ProfilePanelView: View {
         }
     }
 
-    private var billsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Bill Due Dates")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-
-            ForEach($appState.billReminders) { $bill in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(bill.title)
-                            .fontWeight(.semibold)
-                        Text("Expected \(bill.expectedAmount.formatted(appState.currencyFormatter))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Stepper("Due \(bill.dueDay)", value: $bill.dueDay, in: 1...28)
-                        .labelsHidden()
-                    Text("Due \(bill.dueDay)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Text("Reminder: Pay credit card bill on time.")
-                .font(.caption)
-                .foregroundStyle(.orange)
-        }
-    }
-
     private var weeklyNotesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("End-of-Week Note")
@@ -228,7 +200,7 @@ struct ProfilePanelView: View {
             TextEditor(text: $weeklyNoteDraft)
                 .frame(minHeight: 90)
                 .padding(8)
-                .background(Color.white)
+                .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             Button("Save week note") {
                 appState.updateWeekNote(weeklyNoteDraft)
@@ -261,7 +233,7 @@ private struct MonthDetailPopup: View {
                     barRow(label: "Saved", value: abs(month.saved), color: month.isOver ? .red : .mint)
                 }
                 .padding()
-                .background(.white)
+                .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -273,7 +245,7 @@ private struct MonthDetailPopup: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.white)
+                .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
 
                 monthlyIncomeBreakdown
@@ -307,7 +279,7 @@ private struct MonthDetailPopup: View {
             }
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -327,7 +299,7 @@ private struct MonthDetailPopup: View {
             }
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -356,6 +328,8 @@ private struct MonthDetailPopup: View {
 }
 
 #Preview {
-    ProfilePanelView()
-        .environmentObject(AppState())
+    NavigationStack {
+        ProfilePanelView()
+            .environmentObject(AppState())
+    }
 }

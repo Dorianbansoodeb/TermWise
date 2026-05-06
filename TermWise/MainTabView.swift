@@ -15,6 +15,9 @@ struct MainTabView: View {
                     onQuickAddIncome: {
                         appState.draftTransactionType = .income
                         selectedTab = .add
+                    },
+                    onViewMoreTransactions: {
+                        selectedTab = .transactions
                     }
                 )
             }

@@ -6,7 +6,6 @@ struct TransactionsView: View {
     @State private var filter: TransactionFilter = .all
     @State private var searchText: String = ""
     @State private var archivedIds: Set<UUID> = []
-    @State private var pinnedIds: Set<UUID> = []
     @State private var completedIds: Set<UUID> = []
     @State private var markedIds: Set<UUID> = []
     @State private var moreActionsTarget: TransactionItem?
@@ -97,11 +96,19 @@ struct TransactionsView: View {
         }
 
         let withoutArchived = filteredByType.filter { !archivedIds.contains($0.id) }
+        let sortedPinnedFirst = withoutArchived.sorted { lhs, rhs in
+            let leftPinned = appState.pinnedTransactionIds.contains(lhs.id)
+            let rightPinned = appState.pinnedTransactionIds.contains(rhs.id)
+            if leftPinned != rightPinned {
+                return leftPinned && !rightPinned
+            }
+            return lhs.date > rhs.date
+        }
 
         if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return withoutArchived
+            return sortedPinnedFirst
         }
-        return withoutArchived.filter {
+        return sortedPinnedFirst.filter {
             $0.category.localizedCaseInsensitiveContains(searchText) ||
             $0.note.localizedCaseInsensitiveContains(searchText)
         }
@@ -132,7 +139,7 @@ struct TransactionsView: View {
         let id = transaction.id
         TransactionListRow(
             transaction: transaction,
-            isPinned: pinnedIds.contains(id),
+            isPinned: appState.pinnedTransactionIds.contains(id),
             isCompleted: completedIds.contains(id),
             isMarked: markedIds.contains(id),
             onArchive: { archivedIds.insert(id) },
@@ -145,7 +152,7 @@ struct TransactionsView: View {
     }
 
     private func togglePinned(_ id: UUID) {
-        toggle(&pinnedIds, id)
+        toggle(&appState.pinnedTransactionIds, id)
     }
 
     private func toggleCompleted(_ id: UUID) {

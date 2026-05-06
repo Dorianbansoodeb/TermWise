@@ -2,9 +2,11 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var recentlyRemovedTransaction: TransactionItem?
 
     let onQuickAddExpense: () -> Void
     let onQuickAddIncome: () -> Void
+    let onViewMoreTransactions: () -> Void
 
     var body: some View {
         ScrollView {
@@ -16,6 +18,24 @@ struct DashboardView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 AppOverflowMenu()
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if let removed = recentlyRemovedTransaction {
+                HStack {
+                    Text("Removed \(removed.category)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Undo") {
+                        appState.restoreTransaction(removed)
+                        recentlyRemovedTransaction = nil
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .background(.thinMaterial)
             }
         }
     }
@@ -244,9 +264,18 @@ struct DashboardView: View {
 
     private var recentTransactionsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Recent Transactions")
-                .font(.headline)
-            ForEach(appState.transactions.prefix(3)) { item in
+            HStack {
+                Text("Recent Transactions")
+                    .font(.headline)
+                Spacer()
+                Button("View more") {
+                    onViewMoreTransactions()
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            ForEach(recentTransactions.prefix(3)) { item in
                 HStack {
                     Image(systemName: item.type == .expense ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
                         .foregroundStyle(item.type == .expense ? .red : .green)
@@ -261,6 +290,13 @@ struct DashboardView: View {
                     Text("\(item.type == .expense ? "-" : "+")\(item.amount.formatted(appState.currencyFormatter))")
                         .fontWeight(.semibold)
                         .foregroundStyle(item.type == .expense ? .red : .green)
+
+                    Button(role: .destructive) {
+                        recentlyRemovedTransaction = appState.removeTransaction(id: item.id)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.vertical, 4)
             }
@@ -325,6 +361,17 @@ struct DashboardView: View {
 
     private var displayName: String {
         appState.userFirstName.isEmpty ? "Piere" : appState.userFirstName
+    }
+
+    private var recentTransactions: [TransactionItem] {
+        appState.transactions.sorted { lhs, rhs in
+            let leftPinned = appState.pinnedTransactionIds.contains(lhs.id)
+            let rightPinned = appState.pinnedTransactionIds.contains(rhs.id)
+            if leftPinned != rightPinned {
+                return leftPinned && !rightPinned
+            }
+            return lhs.date > rhs.date
+        }
     }
 }
 
@@ -483,7 +530,7 @@ private struct LineTrendChartView: View {
 
 #Preview {
     NavigationStack {
-        DashboardView(onQuickAddExpense: {}, onQuickAddIncome: {})
+        DashboardView(onQuickAddExpense: {}, onQuickAddIncome: {}, onViewMoreTransactions: {})
             .environmentObject(AppState())
     }
 }

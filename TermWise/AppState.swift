@@ -56,6 +56,7 @@ struct BudgetItem: Identifiable, Codable {
     let id: UUID
     let category: String
     var planned: Double
+    var dueDay: Int?
 }
 
 struct OnboardingData: Codable {
@@ -94,11 +95,11 @@ final class AppState: ObservableObject {
     @Published var draftTransactionType: TransactionType = .expense
 
     @Published var budgetItems: [BudgetItem] = [
-        .init(id: UUID(), category: "Rent", planned: 900),
-        .init(id: UUID(), category: "Groceries", planned: 280),
-        .init(id: UUID(), category: "Transportation", planned: 120),
-        .init(id: UUID(), category: "Eating Out", planned: 140),
-        .init(id: UUID(), category: "Tuition/Savings", planned: 300)
+        .init(id: UUID(), category: "Rent", planned: 900, dueDay: 1),
+        .init(id: UUID(), category: "Groceries", planned: 280, dueDay: nil),
+        .init(id: UUID(), category: "Transportation", planned: 120, dueDay: nil),
+        .init(id: UUID(), category: "Eating Out", planned: 140, dueDay: nil),
+        .init(id: UUID(), category: "Tuition/Savings", planned: 300, dueDay: 20)
     ]
 
     @Published var transactions: [TransactionItem] = AppState.seededMayTransactions()
@@ -108,6 +109,7 @@ final class AppState: ObservableObject {
         .init(id: UUID(), title: "Credit Card Bill", dueDay: 14, expectedAmount: 220)
     ]
     @Published var weeklyNotes: [String: String] = [:]
+    @Published var pinnedTransactionIds: Set<UUID> = []
 
     // Simple local history for charts in profile panel
     @Published var monthlyHistory: [MonthlySummary] = [
@@ -199,7 +201,11 @@ final class AppState: ObservableObject {
     var upcomingUrgentBills: [BillReminder] {
         let calendar = Calendar.current
         let now = Date()
-        return billReminders.filter { bill in
+        let derivedBills = budgetItems.compactMap { item -> BillReminder? in
+            guard let dueDay = item.dueDay else { return nil }
+            return BillReminder(id: item.id, title: item.category, dueDay: dueDay, expectedAmount: item.planned)
+        }
+        return derivedBills.filter { bill in
             guard let dueDate = calendar.date(
                 from: DateComponents(
                     year: calendar.component(.year, from: now),
@@ -260,6 +266,31 @@ final class AppState: ObservableObject {
 
     func deleteTransaction(id: UUID) {
         transactions.removeAll { $0.id == id }
+        pinnedTransactionIds.remove(id)
+    }
+
+    @discardableResult
+    func removeTransaction(id: UUID) -> TransactionItem? {
+        pinnedTransactionIds.remove(id)
+        guard let index = transactions.firstIndex(where: { $0.id == id }) else { return nil }
+        return transactions.remove(at: index)
+    }
+
+    func restoreTransaction(_ transaction: TransactionItem) {
+        transactions.insert(transaction, at: 0)
+    }
+
+    func addBudgetCategory(name: String, planned: Double, dueDay: Int?) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, planned >= 0 else { return }
+        budgetItems.append(
+            BudgetItem(
+                id: UUID(),
+                category: trimmed,
+                planned: planned,
+                dueDay: dueDay
+            )
+        )
     }
 
     func updateWeekNote(_ note: String) {
@@ -362,6 +393,7 @@ final class AppState: ObservableObject {
             currencyCode: currencyCode,
             billReminders: billReminders,
             weeklyNotes: weeklyNotes,
+            pinnedTransactionIds: pinnedTransactionIds,
             budgetItems: budgetItems,
             transactions: transactions
         )
@@ -389,6 +421,7 @@ final class AppState: ObservableObject {
             currencyCode = decoded.currencyCode
             billReminders = decoded.billReminders
             weeklyNotes = decoded.weeklyNotes
+            pinnedTransactionIds = decoded.pinnedTransactionIds
             budgetItems = decoded.budgetItems
             transactions = decoded.transactions
         } catch {
@@ -405,8 +438,60 @@ private struct PersistedState: Codable {
     let currencyCode: String
     let billReminders: [BillReminder]
     let weeklyNotes: [String: String]
+    let pinnedTransactionIds: Set<UUID>
     let budgetItems: [BudgetItem]
     let transactions: [TransactionItem]
+
+    private enum CodingKeys: String, CodingKey {
+        case onboarding
+        case manualMonthlyLimit
+        case desiredSavingsRate
+        case bonusIncomeForMonth
+        case currencyCode
+        case billReminders
+        case weeklyNotes
+        case pinnedTransactionIds
+        case budgetItems
+        case transactions
+    }
+
+    init(
+        onboarding: OnboardingData,
+        manualMonthlyLimit: Double?,
+        desiredSavingsRate: Double,
+        bonusIncomeForMonth: Double,
+        currencyCode: String,
+        billReminders: [BillReminder],
+        weeklyNotes: [String: String],
+        pinnedTransactionIds: Set<UUID>,
+        budgetItems: [BudgetItem],
+        transactions: [TransactionItem]
+    ) {
+        self.onboarding = onboarding
+        self.manualMonthlyLimit = manualMonthlyLimit
+        self.desiredSavingsRate = desiredSavingsRate
+        self.bonusIncomeForMonth = bonusIncomeForMonth
+        self.currencyCode = currencyCode
+        self.billReminders = billReminders
+        self.weeklyNotes = weeklyNotes
+        self.pinnedTransactionIds = pinnedTransactionIds
+        self.budgetItems = budgetItems
+        self.transactions = transactions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        onboarding = try container.decode(OnboardingData.self, forKey: .onboarding)
+        manualMonthlyLimit = try container.decodeIfPresent(Double.self, forKey: .manualMonthlyLimit)
+        desiredSavingsRate = try container.decode(Double.self, forKey: .desiredSavingsRate)
+        bonusIncomeForMonth = try container.decode(Double.self, forKey: .bonusIncomeForMonth)
+        currencyCode = try container.decode(String.self, forKey: .currencyCode)
+        billReminders = try container.decode([BillReminder].self, forKey: .billReminders)
+        weeklyNotes = try container.decode([String: String].self, forKey: .weeklyNotes)
+        pinnedTransactionIds = try container.decodeIfPresent(Set<UUID>.self, forKey: .pinnedTransactionIds) ?? []
+        budgetItems = try container.decode([BudgetItem].self, forKey: .budgetItems)
+        transactions = try container.decode([TransactionItem].self, forKey: .transactions)
+    }
 }
 
 struct MonthlySummary: Identifiable, Codable {

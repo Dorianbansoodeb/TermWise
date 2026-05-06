@@ -3,6 +3,12 @@ import SwiftUI
 struct BudgetPlanView: View {
     @EnvironmentObject private var appState: AppState
     @FocusState private var focusedCategoryId: UUID?
+    @State private var editingCategoryIds: Set<UUID> = []
+    @State private var showingAddTransactionSheet = false
+    @State private var newCategoryName: String = ""
+    @State private var newCategoryAmount: String = ""
+    @State private var newCategoryHasDueDate = false
+    @State private var newCategoryDueDay: Int = 1
 
     var body: some View {
         ScrollView {
@@ -13,6 +19,8 @@ struct BudgetPlanView: View {
                 ForEach($appState.budgetItems) { $item in
                     budgetCategoryCard(item: $item)
                 }
+
+                addCategoryCard
             }
             .padding()
         }
@@ -20,11 +28,40 @@ struct BudgetPlanView: View {
         .navigationTitle("Budget Plan")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                AppOverflowMenu()
+                HStack(spacing: 10) {
+                    Menu {
+                        Button("Add Expense", systemImage: "minus.circle") {
+                            appState.draftTransactionType = .expense
+                            showingAddTransactionSheet = true
+                        }
+                        Button("Add Income", systemImage: "plus.circle") {
+                            appState.draftTransactionType = .income
+                            showingAddTransactionSheet = true
+                        }
+                        Button("Add Category", systemImage: "square.grid.2x2.badge.plus") {
+                            focusedCategoryId = nil
+                        }
+                        Button("Add Recurring Bill", systemImage: "calendar.badge.plus") {
+                            newCategoryHasDueDate = true
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+
+                    AppOverflowMenu()
+                }
             }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { focusedCategoryId = nil }
+            }
+        }
+        .sheet(isPresented: $showingAddTransactionSheet) {
+            NavigationStack {
+                AddTransactionView(defaultType: appState.draftTransactionType) {
+                    showingAddTransactionSheet = false
+                }
+                .environmentObject(appState)
             }
         }
     }
@@ -60,7 +97,9 @@ struct BudgetPlanView: View {
     }
 
     private func budgetCategoryCard(item: Binding<BudgetItem>) -> some View {
+        let id = item.wrappedValue.id
         let actual = appState.actualAmount(for: item.wrappedValue.category)
+        let isEditing = editingCategoryIds.contains(id)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(item.wrappedValue.category)
@@ -84,6 +123,24 @@ struct BudgetPlanView: View {
                     .multilineTextAlignment(.trailing)
                     .keyboardType(.decimalPad)
                     .focused($focusedCategoryId, equals: item.wrappedValue.id)
+                    .disabled(!isEditing)
+            }
+
+            if let dueDay = item.wrappedValue.dueDay {
+                HStack {
+                    Text("Due date")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if isEditing {
+                        Stepper("Due \(dueDay)", value: Binding(
+                            get: { item.wrappedValue.dueDay ?? 1 },
+                            set: { item.wrappedValue.dueDay = $0 }
+                        ), in: 1...28)
+                        .labelsHidden()
+                    }
+                    Text("Day \(dueDay)")
+                        .font(.subheadline)
+                }
             }
 
             HStack {
@@ -96,6 +153,14 @@ struct BudgetPlanView: View {
             Text("\(progressPercent(actual: actual, planned: item.wrappedValue.planned))% used")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+                Button(isEditing ? "Done" : "Edit") {
+                    toggleEditing(for: id)
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .padding()
         .background(.white)
@@ -115,6 +180,55 @@ struct BudgetPlanView: View {
 
     private func progressPercent(actual: Double, planned: Double) -> Int {
         Int((actual / max(1, planned)) * 100)
+    }
+
+    private var addCategoryCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Add Category / Recurring Bill")
+                .font(.headline)
+
+            TextField("Category name", text: $newCategoryName)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Monthly amount", text: $newCategoryAmount)
+                .keyboardType(.decimalPad)
+                .textFieldStyle(.roundedBorder)
+
+            Toggle("Add monthly due date", isOn: $newCategoryHasDueDate)
+
+            if newCategoryHasDueDate {
+                Stepper("Due day: \(newCategoryDueDay)", value: $newCategoryDueDay, in: 1...28)
+                    .font(.subheadline)
+            }
+
+            Button("Add Category") {
+                appState.addBudgetCategory(
+                    name: newCategoryName,
+                    planned: Double(newCategoryAmount) ?? 0,
+                    dueDay: newCategoryHasDueDate ? newCategoryDueDay : nil
+                )
+                newCategoryName = ""
+                newCategoryAmount = ""
+                newCategoryHasDueDate = false
+                newCategoryDueDay = 1
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Double(newCategoryAmount) ?? -1) < 0)
+        }
+        .padding()
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+    }
+
+    private func toggleEditing(for id: UUID) {
+        if editingCategoryIds.contains(id) {
+            editingCategoryIds.remove(id)
+            focusedCategoryId = nil
+        } else {
+            editingCategoryIds.insert(id)
+            focusedCategoryId = id
+        }
     }
 }
 
