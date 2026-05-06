@@ -21,6 +21,8 @@ struct ProfilePanelView: View {
 
             goalsSection
 
+            recalculateSection
+
             currencySection
         }
         .padding(12)
@@ -155,6 +157,23 @@ struct ProfilePanelView: View {
             .pickerStyle(.segmented)
         }
     }
+
+    private var recalculateSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Recalculate Estimated Budget")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            Text("Based on your income and savings rate, suggested monthly budget is \(appState.suggestedMonthlyBudgetFromGoals().formatted(appState.currencyFormatter)).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button("Recalculate now") {
+                appState.recalculateEstimatedBudget()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
 }
 
 private struct MonthDetailPopup: View {
@@ -195,6 +214,9 @@ private struct MonthDetailPopup: View {
                 .background(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
 
+                monthlyIncomeBreakdown
+                monthlyExpenseBreakdown
+
                 Spacer()
             }
             .padding()
@@ -208,6 +230,58 @@ private struct MonthDetailPopup: View {
                     }
                 }
             }
+        }
+    }
+
+    private var monthlyIncomeBreakdown: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Income Breakdown")
+                .font(.headline)
+            HStack {
+                Text("Expected income")
+                Spacer()
+                Text(appState.monthlyIncome.formatted(appState.currencyFormatter))
+                    .fontWeight(.semibold)
+            }
+            HStack {
+                Text("Actual income (estimated)")
+                Spacer()
+                Text((month.actual + month.saved).formatted(appState.currencyFormatter))
+                    .fontWeight(.semibold)
+            }
+        }
+        .padding()
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var monthlyExpenseBreakdown: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Expense Breakdown (Actual vs Expected)")
+                .font(.headline)
+
+            ForEach(expenseBreakdownItems, id: \.category) { row in
+                HStack {
+                    Text(row.category)
+                    Spacer()
+                    Text("\(row.actual.formatted(appState.currencyFormatter)) / \(row.expected.formatted(appState.currencyFormatter))")
+                        .font(.caption)
+                        .foregroundStyle(row.actual > row.expected ? .red : .secondary)
+                }
+            }
+        }
+        .padding()
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var expenseBreakdownItems: [(category: String, expected: Double, actual: Double)] {
+        let totalExpectedTemplate = max(1, appState.budgetItems.reduce(0) { $0 + $1.planned })
+        let ratio = month.actual / max(1, month.planned)
+        return appState.budgetItems.map { item in
+            let expected = (item.planned / totalExpectedTemplate) * month.planned
+            let actual = expected * ratio
+            return (item.category, expected, actual)
         }
     }
 

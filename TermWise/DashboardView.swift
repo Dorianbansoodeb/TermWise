@@ -42,8 +42,8 @@ struct DashboardView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            balanceCard
-            planRealityCard
+            expectedSavedCard
+            monthlyExpenseBarCard
             spendTrendCard
             quickActions
             spendingProgressCard
@@ -71,7 +71,8 @@ struct DashboardView: View {
             LineTrendChartView(
                 actual: monthlyActualCumulative,
                 predicted: monthlyPredictedCumulative,
-                predictedColor: predictedOver ? .red : .green
+                predictedColor: predictedOver ? .red : .green,
+                limit: appState.effectiveMonthlyLimit
             )
             .frame(height: 150)
 
@@ -84,15 +85,15 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    private var balanceCard: some View {
+    private var expectedSavedCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Current Balance")
+            Text("Expected Total Saved")
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.85))
-            Text(appState.monthlyBalance.formatted(appState.currencyFormatter))
+            Text(appState.expectedTotalSaved.formatted(appState.currencyFormatter))
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
-            Text("Income \(appState.totalActualIncome.formatted(appState.currencyFormatter)) • Spend \(appState.totalActualSpend.formatted(appState.currencyFormatter))")
+            Text("Income \(appState.monthlyIncome.formatted(appState.currencyFormatter)) • Spend \(appState.totalActualSpend.formatted(appState.currencyFormatter))")
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.85))
         }
@@ -104,16 +105,55 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
-    private var planRealityCard: some View {
+    private var monthlyExpenseBarCard: some View {
+        let limit = max(1, appState.effectiveMonthlyLimit)
+        let totalSpent = appState.totalActualSpend
+        let cappedSpent = min(totalSpent, limit)
+        let overflow = max(0, totalSpent - limit)
+
         VStack(alignment: .leading, spacing: 12) {
-            Text("Plan vs. Reality")
+            Text("Monthly Expense Usage")
                 .font(.headline)
+
+            GeometryReader { proxy in
+                let width = proxy.size.width
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.12))
+                        .frame(height: 18)
+
+                    HStack(spacing: 0) {
+                        ForEach(appState.budgetItems) { item in
+                            let spent = appState.actualAmount(for: item.category)
+                            let segmentRatio = spent / max(1, cappedSpent)
+                            let segmentWidth = width * CGFloat(segmentRatio) * CGFloat(cappedSpent / limit)
+                            Rectangle()
+                                .fill(colorForCategory(item.category))
+                                .frame(width: segmentWidth, height: 18)
+                        }
+
+                        if overflow > 0 {
+                            Rectangle()
+                                .fill(Color.red)
+                                .frame(width: width * CGFloat(overflow / limit), height: 18)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            .frame(height: 18)
+
             HStack {
-                keyValue(label: "Planned", value: appState.totalPlannedSpend)
+                Text("Spent \(totalSpent.formatted(appState.currencyFormatter)) / Allowed \(appState.effectiveMonthlyLimit.formatted(appState.currencyFormatter))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Spacer()
-                keyValue(label: "Actual", value: appState.totalActualSpend)
-                Spacer()
-                keyValue(label: "Delta", value: appState.totalPlannedSpend - appState.totalActualSpend)
+                if overflow > 0 {
+                    Text("Over by \(overflow.formatted(appState.currencyFormatter))")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.red)
+                }
             }
         }
         .padding()
@@ -265,6 +305,16 @@ struct DashboardView: View {
         }
     }
 
+    private func colorForCategory(_ category: String) -> Color {
+        let value = category.lowercased()
+        if value.contains("rent") { return .indigo }
+        if value.contains("grocer") { return .green }
+        if value.contains("transport") { return .orange }
+        if value.contains("eat") { return .pink }
+        if value.contains("tuition") || value.contains("saving") { return .teal }
+        return .blue
+    }
+
     @ViewBuilder
     private func infoChip(text: String) -> some View {
         Text(text)
@@ -281,12 +331,13 @@ private struct LineTrendChartView: View {
     let actual: [Double]
     let predicted: [Double]
     let predictedColor: Color
+    let limit: Double
 
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
-            let maxY = max(1, (actual + predicted).max() ?? 1)
+            let maxY = max(1, (actual + predicted + [limit]).max() ?? 1)
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.gray.opacity(0.08))
@@ -318,6 +369,16 @@ private struct LineTrendChartView: View {
                     }
                 }
                 .stroke(predictedColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 4]))
+
+                // Limit line
+                if limit > 0 {
+                    let yLimit = height - (CGFloat(limit) / CGFloat(maxY) * height)
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: yLimit))
+                        path.addLine(to: CGPoint(x: width, y: yLimit))
+                    }
+                    .stroke(Color.gray.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                }
             }
         }
     }

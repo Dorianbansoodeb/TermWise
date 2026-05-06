@@ -108,6 +108,10 @@ final class AppState: ObservableObject {
         return max(0, targetSavingsAmount - max(0, totalActualSpend - effectiveMonthlyLimit))
     }
 
+    var expectedTotalSaved: Double {
+        max(0, monthlyIncome - totalActualSpend)
+    }
+
     var currencyFormatter: FloatingPointFormatStyle<Double>.Currency {
         .currency(code: currencyCode)
     }
@@ -154,6 +158,16 @@ final class AppState: ObservableObject {
         if let lastIndex = budgetItems.indices.last {
             budgetItems[lastIndex].planned = tuitionPlanned
         }
+    }
+
+    func suggestedMonthlyBudgetFromGoals() -> Double {
+        max(0, monthlyIncome * (1 - desiredSavingsRate / 100))
+    }
+
+    func recalculateEstimatedBudget() {
+        let suggested = suggestedMonthlyBudgetFromGoals()
+        monthlySpendingBudget = suggested
+        manualMonthlyLimit = suggested
     }
 
     private func setupAutoSave() {
