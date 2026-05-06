@@ -14,7 +14,7 @@ struct DashboardView: View {
                 .padding()
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("Dashboard")
+        .navigationTitle("Home")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -44,11 +44,44 @@ struct DashboardView: View {
 
             balanceCard
             planRealityCard
+            spendTrendCard
             quickActions
             spendingProgressCard
             insightCards
             recentTransactionsCard
         }
+    }
+
+    private var spendTrendCard: some View {
+        let predictedOver = projectedEndOfMonthSpend > appState.effectiveMonthlyLimit
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Spending Trend")
+                    .font(.headline)
+                Spacer()
+                Text(predictedOver ? "Risk: Over budget" : "Good pace")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background((predictedOver ? Color.red : Color.green).opacity(0.15))
+                    .clipShape(Capsule())
+            }
+
+            LineTrendChartView(
+                actual: monthlyActualCumulative,
+                predicted: monthlyPredictedCumulative,
+                predictedColor: predictedOver ? .red : .green
+            )
+            .frame(height: 150)
+
+            Text("Predicted month-end: \(projectedEndOfMonthSpend.formatted(appState.currencyFormatter)) vs limit \(appState.effectiveMonthlyLimit.formatted(appState.currencyFormatter))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     private var balanceCard: some View {
@@ -186,6 +219,41 @@ struct DashboardView: View {
         return Int((spent / max(1, eating.planned)) * 100)
     }
 
+    private var monthlyActualCumulative: [Double] {
+        let calendar = Calendar.current
+        let now = Date()
+        let day = calendar.component(.day, from: now)
+
+        let monthTransactions = appState.transactions.filter {
+            calendar.isDate($0.date, equalTo: now, toGranularity: .month) && $0.type == .expense
+        }
+
+        var cumulative: [Double] = []
+        var runningTotal = 0.0
+        for currentDay in 1...max(1, day) {
+            let dayTotal = monthTransactions
+                .filter { calendar.component(.day, from: $0.date) == currentDay }
+                .reduce(0) { $0 + $1.amount }
+            runningTotal += dayTotal
+            cumulative.append(runningTotal)
+        }
+        return cumulative
+    }
+
+    private var monthlyPredictedCumulative: [Double] {
+        let calendar = Calendar.current
+        let now = Date()
+        let day = max(1, calendar.component(.day, from: now))
+        let daysInMonth = calendar.range(of: .day, in: .month, for: now)?.count ?? day
+
+        let avgPerDay = (monthlyActualCumulative.last ?? 0) / Double(day)
+        return (1...daysInMonth).map { Double($0) * avgPerDay }
+    }
+
+    private var projectedEndOfMonthSpend: Double {
+        monthlyPredictedCumulative.last ?? (monthlyActualCumulative.last ?? 0)
+    }
+
     private func keyValue(label: String, value: Double) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
@@ -206,6 +274,52 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.white)
             .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+private struct LineTrendChartView: View {
+    let actual: [Double]
+    let predicted: [Double]
+    let predictedColor: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let maxY = max(1, (actual + predicted).max() ?? 1)
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.gray.opacity(0.08))
+
+                Path { path in
+                    guard actual.count > 1 else { return }
+                    for idx in actual.indices {
+                        let x = CGFloat(idx) / CGFloat(max(1, actual.count - 1)) * width
+                        let y = height - (CGFloat(actual[idx]) / CGFloat(maxY) * height)
+                        if idx == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                }
+                .stroke(Color.blue, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+
+                Path { path in
+                    guard predicted.count > 1 else { return }
+                    for idx in predicted.indices {
+                        let x = CGFloat(idx) / CGFloat(max(1, predicted.count - 1)) * width
+                        let y = height - (CGFloat(predicted[idx]) / CGFloat(maxY) * height)
+                        if idx == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                }
+                .stroke(predictedColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 4]))
+            }
+        }
     }
 }
 

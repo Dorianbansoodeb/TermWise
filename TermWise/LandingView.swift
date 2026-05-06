@@ -67,41 +67,50 @@ struct LandingView: View {
     private var previewCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("This Month")
+                Text("Preview")
                     .font(.headline)
                 Spacer()
-                Text("On track")
+                Text("Smart nudges")
                     .font(.caption)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color.green.opacity(0.15))
+                    .background(Color.blue.opacity(0.15))
                     .clipShape(Capsule())
             }
 
-            HStack(spacing: 12) {
-                miniMetric(title: "Budget", value: "$1,480")
-                miniMetric(title: "Spent", value: "$1,125")
-                miniMetric(title: "Saved", value: "$355")
-            }
+            RoundedRectangle(cornerRadius: 12)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.25), Color.purple.opacity(0.2)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(height: 90)
+                .overlay(
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Plan vs Reality")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        Text("Friendly insights help you stay on budget through school and co-op.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(10),
+                    alignment: .leading
+                )
 
-            ProgressView(value: 0.76)
-                .tint(.blue)
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("No setup stress. Start simple and improve as you go.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding()
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 18))
-    }
-
-    private func miniMetric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.headline)
-                .fontWeight(.semibold)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

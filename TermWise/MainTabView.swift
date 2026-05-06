@@ -19,7 +19,7 @@ struct MainTabView: View {
                 )
             }
             .tabItem {
-                Label("Dashboard", systemImage: "chart.pie.fill")
+                Label("Home", systemImage: "house.fill")
             }
             .tag(AppTab.dashboard)
 
