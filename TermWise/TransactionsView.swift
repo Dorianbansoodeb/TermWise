@@ -119,12 +119,6 @@ struct TransactionsView: View {
             .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
     }
 
-    private func signedAmountText(for transaction: TransactionItem) -> String {
-        let sign = transaction.type == .expense ? "-" : "+"
-        let netAmount = transaction.type == .expense ? max(0, transaction.amount - transaction.savedApplied) : transaction.amount
-        return "\(sign)\(netAmount.formatted(appState.currencyFormatter))"
-    }
-
     private func toggle(_ set: inout Set<UUID>, _ id: UUID) {
         if set.contains(id) {
             set.remove(id)
@@ -138,7 +132,6 @@ struct TransactionsView: View {
         let id = transaction.id
         TransactionListRow(
             transaction: transaction,
-            isArchived: archivedIds.contains(id),
             isPinned: pinnedIds.contains(id),
             isCompleted: completedIds.contains(id),
             isMarked: markedIds.contains(id),
@@ -167,7 +160,6 @@ struct TransactionsView: View {
 private struct TransactionListRow: View {
     @EnvironmentObject private var appState: AppState
     let transaction: TransactionItem
-    let isArchived: Bool
     let isPinned: Bool
     let isCompleted: Bool
     let isMarked: Bool
@@ -265,11 +257,6 @@ private struct TransactionListRow: View {
             Text("Marked")
                 .font(.caption2)
                 .foregroundStyle(.orange)
-        }
-        if isArchived {
-            Text("Archived")
-                .font(.caption2)
-                .foregroundStyle(.gray)
         }
     }
 
