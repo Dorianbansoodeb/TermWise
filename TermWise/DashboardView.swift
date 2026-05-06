@@ -26,7 +26,7 @@ struct DashboardView: View {
                 urgentBillsCard
             }
 
-            Text("Good morning, \(appState.userFirstName)")
+            Text("\(greetingText), \(displayName)")
                 .font(.title2)
                 .fontWeight(.semibold)
 
@@ -81,7 +81,7 @@ struct DashboardView: View {
 
     private var expectedSavedCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Expected Total Saved")
+            Text("Main Balance")
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.85))
             Text(appState.expectedTotalSaved.formatted(appState.currencyFormatter))
@@ -97,6 +97,7 @@ struct DashboardView: View {
             LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
         )
         .clipShape(RoundedRectangle(cornerRadius: 18))
+        .shadow(color: .blue.opacity(0.2), radius: 14, y: 8)
     }
 
     private func monthlyExpenseBarCard() -> some View {
@@ -106,7 +107,7 @@ struct DashboardView: View {
         let overflow = max(0, totalSpent - limit)
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Monthly Expense Usage")
+            Text("Plan vs Reality")
                 .font(.headline)
 
             GeometryReader { proxy in
@@ -214,8 +215,14 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Insights")
                 .font(.headline)
-            infoChip(text: "You're under budget by \((appState.totalPlannedSpend - appState.totalActualSpend).formatted(appState.currencyFormatter)) this month")
-            infoChip(text: "Eating out is at \(eatingOutPercent)% with 19 days left")
+            infoChip(
+                text: "You’re \(budgetDelta >= 0 ? "under" : "over") budget by \(abs(budgetDelta).formatted(appState.currencyFormatter)) this month",
+                tone: budgetDelta >= 0 ? .green : .red
+            )
+            infoChip(text: "Eating out is at \(eatingOutPercent)% with \(remainingDaysInMonth) days left", tone: .orange)
+            if let awareness = appState.awarenessMessages.first {
+                infoChip(text: awareness, tone: .blue)
+            }
         }
     }
 
@@ -291,14 +298,33 @@ struct DashboardView: View {
     }
 
     @ViewBuilder
-    private func infoChip(text: String) -> some View {
+    private func infoChip(text: String, tone: Color) -> some View {
         Text(text)
             .font(.subheadline)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white)
+            .background(tone.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var budgetDelta: Double {
+        appState.totalPlannedSpend - appState.totalActualSpend
+    }
+
+    private var remainingDaysInMonth: Int {
+        max(0, appState.daysInCurrentMonth - appState.currentDayOfMonth)
+    }
+
+    private var greetingText: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour < 12 { return "Good morning" }
+        if hour < 18 { return "Good afternoon" }
+        return "Good evening"
+    }
+
+    private var displayName: String {
+        appState.userFirstName.isEmpty ? "Piere" : appState.userFirstName
     }
 }
 

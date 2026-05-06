@@ -34,6 +34,7 @@ struct AddTransactionView: View {
                         .padding()
                         .background(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
                 }
 
                 Picker("Type", selection: $type) {
@@ -61,6 +62,10 @@ struct AddTransactionView: View {
                                     .padding(.vertical, 8)
                                     .frame(maxWidth: .infinity)
                                     .background(category == option ? Color.blue.opacity(0.2) : Color.white)
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(category == option ? Color.blue.opacity(0.5) : Color.gray.opacity(0.2), lineWidth: 1)
+                                    )
                                     .clipShape(Capsule())
                             }
                         }
@@ -72,8 +77,13 @@ struct AddTransactionView: View {
                         .textFieldStyle(.roundedBorder)
                 }
 
-                TextField("Optional note", text: $note)
-                    .textFieldStyle(.roundedBorder)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Note (optional)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("e.g. groceries for week 1", text: $note)
+                        .textFieldStyle(.roundedBorder)
+                }
             }
             .padding()
         }

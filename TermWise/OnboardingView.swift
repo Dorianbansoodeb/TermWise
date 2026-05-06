@@ -8,13 +8,23 @@ struct OnboardingView: View {
     @State private var expectedCoopIncome: String = "0"
     @State private var tuitionGoal: String = "4300"
     @State private var monthlyBudget: String = "1480"
+    @State private var rentBudget: String = "800"
+    @State private var groceriesBudget: String = "260"
+    @State private var transportBudget: String = "120"
+    @State private var eatingOutBudget: String = "180"
     @State private var step: Int = 0
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
+                Text("Set up your term plan")
+                    .font(.title3.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+
                 ProgressView(value: Double(step + 1), total: 4)
                     .padding(.horizontal)
+                    .tint(.blue)
 
                 Text("Step \(step + 1) of 4")
                     .font(.caption)
@@ -43,11 +53,20 @@ struct OnboardingView: View {
                     case 2:
                         onboardingCard(
                             title: "Budget Categories",
-                            subtitle: "Set your monthly spending budget."
+                            subtitle: "Set category targets for your monthly plan."
                         ) {
-                            TextField("Monthly spending budget", text: $monthlyBudget)
-                                .keyboardType(.decimalPad)
-                                .textFieldStyle(.roundedBorder)
+                            categoryInput("Rent", value: $rentBudget)
+                            categoryInput("Groceries", value: $groceriesBudget)
+                            categoryInput("Transportation", value: $transportBudget)
+                            categoryInput("Eating Out", value: $eatingOutBudget)
+                            HStack {
+                                Text("Monthly spending budget")
+                                Spacer()
+                                Text(estimatedBudgetTotal.formatted(.currency(code: "USD")))
+                                    .fontWeight(.semibold)
+                            }
+                            .font(.subheadline)
+                            .padding(.top, 4)
                         }
                     default:
                         onboardingCard(
@@ -76,6 +95,9 @@ struct OnboardingView: View {
 
                     Button(step == 3 ? "Continue" : "Next") {
                         if step < 3 {
+                            if step == 2 {
+                                monthlyBudget = String(estimatedBudgetTotal)
+                            }
                             step += 1
                         } else {
                             let data = OnboardingData(
@@ -111,6 +133,26 @@ struct OnboardingView: View {
         .padding()
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+    }
+
+    private var estimatedBudgetTotal: Double {
+        (Double(rentBudget) ?? 0) +
+        (Double(groceriesBudget) ?? 0) +
+        (Double(transportBudget) ?? 0) +
+        (Double(eatingOutBudget) ?? 0)
+    }
+
+    private func categoryInput(_ label: String, value: Binding<String>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            TextField("0", text: value)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 120)
+                .textFieldStyle(.roundedBorder)
+        }
     }
 }
 

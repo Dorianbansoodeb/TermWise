@@ -7,7 +7,7 @@ struct LandingView: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.blue.opacity(0.18), Color.purple.opacity(0.12), Color(.systemGroupedBackground)],
+                colors: [Color.blue.opacity(0.16), Color.indigo.opacity(0.14), Color(.systemGroupedBackground)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -34,6 +34,7 @@ struct LandingView: View {
 
                 previewCard
                     .padding(.horizontal)
+                    .shadow(color: .black.opacity(0.08), radius: 12, y: 8)
 
                 Spacer()
 
@@ -42,7 +43,9 @@ struct LandingView: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(Color.blue)
+                        .background(
+                            LinearGradient(colors: [Color.blue, Color.indigo], startPoint: .leading, endPoint: .trailing)
+                        )
                         .foregroundStyle(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
 
@@ -67,7 +70,7 @@ struct LandingView: View {
     private var previewCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Preview")
+                Text("Your Month at a Glance")
                     .font(.headline)
                 Spacer()
                 Text("Smart nudges")
@@ -78,27 +81,39 @@ struct LandingView: View {
                     .clipShape(Capsule())
             }
 
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.blue.opacity(0.25), Color.purple.opacity(0.2)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Plan vs Reality")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("Track spending and catch risks early.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                ZStack {
+                    Circle()
+                        .stroke(Color.blue.opacity(0.2), lineWidth: 8)
+                        .frame(width: 54, height: 54)
+                    Circle()
+                        .trim(from: 0, to: 0.68)
+                        .stroke(Color.blue, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 54, height: 54)
+                    Text("68%")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                }
+            }
+            .padding(12)
+            .background(
+                LinearGradient(
+                    colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.14)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
-                .frame(height: 90)
-                .overlay(
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Plan vs Reality")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                        Text("Friendly insights help you stay on budget through school and co-op.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(10),
-                    alignment: .leading
-                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
 
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")

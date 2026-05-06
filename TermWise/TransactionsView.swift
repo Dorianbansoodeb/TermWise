@@ -20,6 +20,7 @@ struct TransactionsView: View {
             }
             .pickerStyle(.segmented)
             .padding()
+            .background(Color(.systemGroupedBackground))
 
             List {
                 Section("Summary") {
@@ -64,7 +65,9 @@ struct TransactionsView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Transactions")
         .searchable(text: $searchText, prompt: "Search merchant or category")
         .toolbar {
@@ -150,9 +153,9 @@ private struct TransactionListRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: iconName)
-                .foregroundStyle(.blue)
+                .foregroundStyle(transaction.type == .expense ? .orange : .green)
                 .frame(width: 30, height: 30)
-                .background(Color.blue.opacity(0.1))
+                .background((transaction.type == .expense ? Color.orange : Color.green).opacity(0.12))
                 .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 3) {

@@ -40,6 +40,7 @@ struct BudgetPlanView: View {
         .padding()
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 
     private var tuitionSavingsCard: some View {
@@ -55,6 +56,7 @@ struct BudgetPlanView: View {
         .padding()
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 
     private func budgetCategoryCard(item: Binding<BudgetItem>) -> some View {
@@ -90,10 +92,15 @@ struct BudgetPlanView: View {
                 Text(actual.formatted(appState.currencyFormatter))
                     .foregroundStyle(actual > item.wrappedValue.planned ? .red : .secondary)
             }
+
+            Text("\(progressPercent(actual: actual, planned: item.wrappedValue.planned))% used")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding()
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 
     private func metricRow(_ label: String, _ value: Double, emphasize: Bool = false) -> some View {
@@ -104,6 +111,10 @@ struct BudgetPlanView: View {
                 .foregroundStyle(emphasize ? (value < 0 ? .red : .green) : .secondary)
                 .fontWeight(emphasize ? .semibold : .regular)
         }
+    }
+
+    private func progressPercent(actual: Double, planned: Double) -> Int {
+        Int((actual / max(1, planned)) * 100)
     }
 }
 
