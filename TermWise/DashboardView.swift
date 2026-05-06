@@ -328,6 +328,8 @@ struct DashboardView: View {
 }
 
 private struct LineTrendChartView: View {
+    @EnvironmentObject private var appState: AppState
+
     let actual: [Double]
     let predicted: [Double]
     let predictedColor: Color
@@ -337,7 +339,9 @@ private struct LineTrendChartView: View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
-            let maxY = max(1, (actual + predicted + [limit]).max() ?? 1)
+            let dataMax = max(1, (actual + predicted + [limit]).max() ?? 1)
+            // Add headroom so the limit line is visually around mid-chart.
+            let maxY = max(dataMax * 1.6, limit * 2.0)
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.gray.opacity(0.08))
@@ -378,6 +382,16 @@ private struct LineTrendChartView: View {
                         path.addLine(to: CGPoint(x: width, y: yLimit))
                     }
                     .stroke(Color.gray.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+
+                    Text("Limit \(limit.formatted(appState.currencyFormatter))")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.85))
+                        .clipShape(Capsule())
+                        .position(x: min(width - 70, max(60, width * 0.72)), y: max(12, yLimit - 10))
                 }
             }
         }
