@@ -69,14 +69,16 @@ struct DashboardView: View {
             }
 
             LineTrendChartView(
-                actual: monthlyActualCumulative,
-                predicted: monthlyPredictedCumulative,
-                predictedColor: predictedOver ? .red : .green,
+                dailyActualCumulative: dailyActualCumulative,
+                currentDay: currentDayOfMonth,
+                daysInMonth: daysInCurrentMonth,
+                projectedEndValue: projectedEndOfMonthSpend,
+                projectedColor: predictedOver ? .red : .green,
                 limit: appState.effectiveMonthlyLimit
             )
             .frame(height: 150)
 
-            Text("Predicted month-end: \(projectedEndOfMonthSpend.formatted(appState.currencyFormatter)) vs limit \(appState.effectiveMonthlyLimit.formatted(appState.currencyFormatter))")
+            Text("Projection runs from today to month-end using expected daily usage (\(expectedDailySpend.formatted(appState.currencyFormatter))/day).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -259,10 +261,22 @@ struct DashboardView: View {
         return Int((spent / max(1, eating.planned)) * 100)
     }
 
-    private var monthlyActualCumulative: [Double] {
+    private var currentDayOfMonth: Int {
+        Calendar.current.component(.day, from: Date())
+    }
+
+    private var daysInCurrentMonth: Int {
+        Calendar.current.range(of: .day, in: .month, for: Date())?.count ?? currentDayOfMonth
+    }
+
+    private var expectedDailySpend: Double {
+        appState.effectiveMonthlyLimit / Double(max(1, daysInCurrentMonth))
+    }
+
+    private var dailyActualCumulative: [Double] {
         let calendar = Calendar.current
         let now = Date()
-        let day = calendar.component(.day, from: now)
+        let day = currentDayOfMonth
 
         let monthTransactions = appState.transactions.filter {
             calendar.isDate($0.date, equalTo: now, toGranularity: .month) && $0.type == .expense
@@ -280,18 +294,10 @@ struct DashboardView: View {
         return cumulative
     }
 
-    private var monthlyPredictedCumulative: [Double] {
-        let calendar = Calendar.current
-        let now = Date()
-        let day = max(1, calendar.component(.day, from: now))
-        let daysInMonth = calendar.range(of: .day, in: .month, for: now)?.count ?? day
-
-        let avgPerDay = (monthlyActualCumulative.last ?? 0) / Double(day)
-        return (1...daysInMonth).map { Double($0) * avgPerDay }
-    }
-
     private var projectedEndOfMonthSpend: Double {
-        monthlyPredictedCumulative.last ?? (monthlyActualCumulative.last ?? 0)
+        let currentActual = dailyActualCumulative.last ?? 0
+        let remainingDays = max(0, daysInCurrentMonth - currentDayOfMonth)
+        return currentActual + expectedDailySpend * Double(remainingDays)
     }
 
     private func keyValue(label: String, value: Double) -> some View {
@@ -330,16 +336,18 @@ struct DashboardView: View {
 private struct LineTrendChartView: View {
     @EnvironmentObject private var appState: AppState
 
-    let actual: [Double]
-    let predicted: [Double]
-    let predictedColor: Color
+    let dailyActualCumulative: [Double]
+    let currentDay: Int
+    let daysInMonth: Int
+    let projectedEndValue: Double
+    let projectedColor: Color
     let limit: Double
 
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
-            let dataMax = max(1, (actual + predicted + [limit]).max() ?? 1)
+            let dataMax = max(1, (dailyActualCumulative + [projectedEndValue, limit]).max() ?? 1)
             // Add headroom so the limit line is visually around mid-chart.
             let maxY = max(dataMax * 1.6, limit * 2.0)
             let yLimit = height - (CGFloat(limit) / CGFloat(maxY) * height)
@@ -348,32 +356,35 @@ private struct LineTrendChartView: View {
                     .fill(Color.gray.opacity(0.08))
 
                 Path { path in
-                    guard actual.count > 1 else { return }
-                    for idx in actual.indices {
-                        let x = CGFloat(idx) / CGFloat(max(1, actual.count - 1)) * width
-                        let y = height - (CGFloat(actual[idx]) / CGFloat(maxY) * height)
-                        if idx == 0 {
-                            path.move(to: CGPoint(x: x, y: y))
-                        } else {
-                            path.addLine(to: CGPoint(x: x, y: y))
-                        }
+                    guard !dailyActualCumulative.isEmpty else { return }
+                    let firstY = height - (CGFloat(dailyActualCumulative[0]) / CGFloat(maxY) * height)
+                    path.move(to: CGPoint(x: 0, y: firstY))
+
+                    // Stair-step (stagnant) graph from day 1 to current day.
+                    for dayIndex in 1..<dailyActualCumulative.count {
+                        let previous = dailyActualCumulative[dayIndex - 1]
+                        let current = dailyActualCumulative[dayIndex]
+                        let x = CGFloat(dayIndex) / CGFloat(max(1, daysInMonth - 1)) * width
+                        let prevY = height - (CGFloat(previous) / CGFloat(maxY) * height)
+                        let currY = height - (CGFloat(current) / CGFloat(maxY) * height)
+                        path.addLine(to: CGPoint(x: x, y: prevY))
+                        path.addLine(to: CGPoint(x: x, y: currY))
                     }
                 }
                 .stroke(Color.blue, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
 
+                // Straight dotted projection from current day to end of month.
                 Path { path in
-                    guard predicted.count > 1 else { return }
-                    for idx in predicted.indices {
-                        let x = CGFloat(idx) / CGFloat(max(1, predicted.count - 1)) * width
-                        let y = height - (CGFloat(predicted[idx]) / CGFloat(maxY) * height)
-                        if idx == 0 {
-                            path.move(to: CGPoint(x: x, y: y))
-                        } else {
-                            path.addLine(to: CGPoint(x: x, y: y))
-                        }
-                    }
+                    guard let currentValue = dailyActualCumulative.last else { return }
+                    let currentX = CGFloat(max(0, currentDay - 1)) / CGFloat(max(1, daysInMonth - 1)) * width
+                    let currentY = height - (CGFloat(currentValue) / CGFloat(maxY) * height)
+                    let endX = width
+                    let endY = height - (CGFloat(projectedEndValue) / CGFloat(maxY) * height)
+
+                    path.move(to: CGPoint(x: currentX, y: currentY))
+                    path.addLine(to: CGPoint(x: endX, y: endY))
                 }
-                .stroke(predictedColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 4]))
+                .stroke(projectedColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 4]))
 
                 // Limit line
                 if limit > 0 {
@@ -393,6 +404,17 @@ private struct LineTrendChartView: View {
                         .clipShape(Capsule())
                         .position(x: min(width - 70, max(60, width * 0.72)), y: max(12, yLimit - 10))
                 }
+
+                // Day markers for readability
+                HStack {
+                    Text("1")
+                    Spacer()
+                    Text("\(daysInMonth)")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .frame(maxHeight: .infinity, alignment: .bottom)
             }
         }
     }

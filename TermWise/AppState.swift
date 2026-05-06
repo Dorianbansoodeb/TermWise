@@ -59,12 +59,7 @@ final class AppState: ObservableObject {
         .init(id: UUID(), category: "Tuition/Savings", planned: 300)
     ]
 
-    @Published var transactions: [TransactionItem] = [
-        .init(id: UUID(), amount: 920, category: "Paycheque", note: "Biweekly pay", date: Date().addingTimeInterval(-86400 * 2), type: .income),
-        .init(id: UUID(), amount: 46, category: "Groceries", note: "Weekly grocery run", date: Date().addingTimeInterval(-86400 * 1), type: .expense),
-        .init(id: UUID(), amount: 8.75, category: "Eating Out", note: "Starbucks", date: Date(), type: .expense),
-        .init(id: UUID(), amount: 100, category: "Gift", note: "Birthday gift", date: Date(), type: .income)
-    ]
+    @Published var transactions: [TransactionItem] = AppState.seededMayTransactions()
 
     // Simple local history for charts in profile panel
     @Published var monthlyHistory: [MonthlySummary] = [
@@ -240,4 +235,29 @@ struct MonthlySummary: Identifiable, Codable {
     let saved: Double
 
     var isOver: Bool { saved < 0 }
+}
+
+private extension AppState {
+    static func seededMayTransactions() -> [TransactionItem] {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: Date())
+
+        func makeDate(_ day: Int) -> Date {
+            calendar.date(from: DateComponents(year: year, month: 5, day: day, hour: 12)) ?? Date()
+        }
+
+        return [
+            .init(id: UUID(), amount: 920, category: "Paycheque", note: "Biweekly pay", date: makeDate(2), type: .income),
+            .init(id: UUID(), amount: 900, category: "Rent", note: "May rent", date: makeDate(1), type: .expense),
+            .init(id: UUID(), amount: 46, category: "Groceries", note: "Weekly grocery run", date: makeDate(2), type: .expense),
+            .init(id: UUID(), amount: 18.5, category: "Transportation", note: "Transit reload", date: makeDate(3), type: .expense),
+            .init(id: UUID(), amount: 8.75, category: "Eating Out", note: "Starbucks", date: makeDate(3), type: .expense),
+            .init(id: UUID(), amount: 52, category: "Groceries", note: "Costco split", date: makeDate(4), type: .expense),
+            .init(id: UUID(), amount: 13.25, category: "Eating Out", note: "Bubble tea", date: makeDate(4), type: .expense),
+            .init(id: UUID(), amount: 21, category: "Transportation", note: "Ride share", date: makeDate(5), type: .expense),
+            .init(id: UUID(), amount: 29, category: "Eating Out", note: "Lunch with friends", date: makeDate(5), type: .expense),
+            .init(id: UUID(), amount: 100, category: "Gift", note: "Birthday gift", date: makeDate(5), type: .income),
+            .init(id: UUID(), amount: 34.5, category: "Groceries", note: "Produce top-up", date: makeDate(6), type: .expense)
+        ].sorted { $0.date > $1.date }
+    }
 }
