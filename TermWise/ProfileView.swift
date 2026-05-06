@@ -1,0 +1,21 @@
+import SwiftUI
+
+struct ProfileView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                ProfilePanelView()
+            }
+            .padding()
+            .background(Color(.systemGroupedBackground))
+        }
+        .navigationTitle("Profile")
+    }
+}
+
+#Preview {
+    NavigationStack {
+        ProfileView()
+            .environmentObject(AppState())
+    }
+}

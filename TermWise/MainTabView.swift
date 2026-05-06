@@ -40,6 +40,14 @@ struct MainTabView: View {
             .tag(AppTab.budget)
 
             NavigationStack {
+                ProfileView()
+            }
+            .tabItem {
+                Label("Profile", systemImage: "person.crop.circle")
+            }
+            .tag(AppTab.profile)
+
+            NavigationStack {
                 AddTransactionView(defaultType: appState.draftTransactionType) {
                     selectedTab = .dashboard
                 }
@@ -56,6 +64,7 @@ private enum AppTab {
     case dashboard
     case transactions
     case budget
+    case profile
     case add
 }
 

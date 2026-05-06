@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let onQuickAddExpense: () -> Void
     let onQuickAddIncome: () -> Void
@@ -11,20 +10,8 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView {
-            if horizontalSizeClass == .regular {
-                HStack(alignment: .top, spacing: 16) {
-                    mainContent
-                    ProfilePanelView()
-                        .frame(width: 280)
-                }
+            mainContent
                 .padding()
-            } else {
-                VStack(spacing: 16) {
-                    mainContent
-                    ProfilePanelView()
-                }
-                .padding()
-            }
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Dashboard")
