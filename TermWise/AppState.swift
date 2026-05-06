@@ -37,6 +37,7 @@ final class AppState: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     // Core profile and goals
+    @Published var userFirstName: String = "Piere"
     @Published var currentTerm: String = "Fall 2026"
     @Published var monthlyIncome: Double = 3200
     @Published var expectedCoopIncome: Double = 0
