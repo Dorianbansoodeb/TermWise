@@ -342,6 +342,7 @@ private struct LineTrendChartView: View {
             let dataMax = max(1, (actual + predicted + [limit]).max() ?? 1)
             // Add headroom so the limit line is visually around mid-chart.
             let maxY = max(dataMax * 1.6, limit * 2.0)
+            let yLimit = height - (CGFloat(limit) / CGFloat(maxY) * height)
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.gray.opacity(0.08))
@@ -376,7 +377,6 @@ private struct LineTrendChartView: View {
 
                 // Limit line
                 if limit > 0 {
-                    let yLimit = height - (CGFloat(limit) / CGFloat(maxY) * height)
                     Path { path in
                         path.move(to: CGPoint(x: 0, y: yLimit))
                         path.addLine(to: CGPoint(x: width, y: yLimit))
