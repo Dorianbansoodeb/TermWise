@@ -41,7 +41,7 @@ struct DashboardView: View {
     }
 
     private var spendTrendCard: some View {
-        let predictedOver = projectedEndOfMonthSpend > appState.effectiveMonthlyLimit
+        let predictedOver = appState.projectedEndOfMonthSpend > appState.effectiveMonthlyLimit
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Spending Trend")
@@ -57,16 +57,16 @@ struct DashboardView: View {
             }
 
             LineTrendChartView(
-                dailyActualCumulative: dailyActualCumulative,
-                currentDay: currentDayOfMonth,
-                daysInMonth: daysInCurrentMonth,
-                projectedEndValue: projectedEndOfMonthSpend,
+                dailyActualCumulative: appState.dailyActualCumulative(),
+                currentDay: appState.currentDayOfMonth,
+                daysInMonth: appState.daysInCurrentMonth,
+                projectedEndValue: appState.projectedEndOfMonthSpend,
                 projectedColor: predictedOver ? .red : .green,
                 limit: appState.effectiveMonthlyLimit
             )
             .frame(height: 150)
 
-            Text("Projection runs from today to month-end using expected daily usage (\(expectedDailySpend.formatted(appState.currencyFormatter))/day).")
+            Text("Projection runs from today to month-end using expected daily usage (\(appState.expectedDailySpend.formatted(appState.currencyFormatter))/day).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -249,45 +249,6 @@ struct DashboardView: View {
         return Int((spent / max(1, eating.planned)) * 100)
     }
 
-    private var currentDayOfMonth: Int {
-        Calendar.current.component(.day, from: Date())
-    }
-
-    private var daysInCurrentMonth: Int {
-        Calendar.current.range(of: .day, in: .month, for: Date())?.count ?? currentDayOfMonth
-    }
-
-    private var expectedDailySpend: Double {
-        appState.effectiveMonthlyLimit / Double(max(1, daysInCurrentMonth))
-    }
-
-    private var dailyActualCumulative: [Double] {
-        let calendar = Calendar.current
-        let now = Date()
-        let day = currentDayOfMonth
-
-        let monthTransactions = appState.transactions.filter {
-            calendar.isDate($0.date, equalTo: now, toGranularity: .month) && $0.type == .expense
-        }
-
-        var cumulative: [Double] = []
-        var runningTotal = 0.0
-        for currentDay in 1...max(1, day) {
-            let dayTotal = monthTransactions
-                .filter { calendar.component(.day, from: $0.date) == currentDay }
-                .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
-            runningTotal += dayTotal
-            cumulative.append(runningTotal)
-        }
-        return cumulative
-    }
-
-    private var projectedEndOfMonthSpend: Double {
-        let currentActual = dailyActualCumulative.last ?? 0
-        let remainingDays = max(0, daysInCurrentMonth - currentDayOfMonth)
-        return currentActual + expectedDailySpend * Double(remainingDays)
-    }
-
     private func keyValue(label: String, value: Double) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
@@ -330,6 +291,7 @@ private struct LineTrendChartView: View {
     let projectedEndValue: Double
     let projectedColor: Color
     let limit: Double
+    @State private var selectedDayIndex: Int? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -403,8 +365,73 @@ private struct LineTrendChartView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
                 .frame(maxHeight: .infinity, alignment: .bottom)
+
+                if let selectedDayIndex {
+                    let x = CGFloat(selectedDayIndex) / CGFloat(max(1, daysInMonth - 1)) * width
+                    let amount = amountFor(dayIndex: selectedDayIndex)
+                    let y = height - (CGFloat(amount) / CGFloat(maxY) * height)
+                    let isFuture = selectedDayIndex + 1 > currentDay
+                    let dayExpectedLimit = limit * (Double(selectedDayIndex + 1) / Double(max(1, daysInMonth)))
+                    let statusColor: Color = isFuture
+                        ? (amount <= dayExpectedLimit ? .green : .red)
+                        : .blue
+
+                    Path { path in
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: height))
+                    }
+                    .stroke(Color.gray.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 10, height: 10)
+                        .position(x: x, y: y)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(dateLabel(for: selectedDayIndex))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(amount.formatted(appState.currencyFormatter))
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(statusColor)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .position(
+                        x: min(width - 80, max(80, x)),
+                        y: max(20, y - 24)
+                    )
+                }
             }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let clampedX = min(max(0, value.location.x), width)
+                        let ratio = clampedX / max(1, width)
+                        let index = Int(round(ratio * CGFloat(max(1, daysInMonth - 1))))
+                        selectedDayIndex = min(max(0, index), max(0, daysInMonth - 1))
+                    }
+                    .onEnded { _ in
+                        selectedDayIndex = nil
+                    }
+            )
         }
+    }
+
+    private func amountFor(dayIndex: Int) -> Double {
+        let dayNumber = dayIndex + 1
+        return appState.projectedAmountForDay(dayNumber: dayNumber)
+    }
+
+    private func dateLabel(for dayIndex: Int) -> String {
+        let month = Calendar.current.component(.month, from: Date())
+        let symbols = Calendar.current.shortMonthSymbols
+        let name = symbols[max(0, min(symbols.count - 1, month - 1))]
+        return "\(name) \(dayIndex + 1)"
     }
 }
 

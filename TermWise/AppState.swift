@@ -159,6 +159,18 @@ final class AppState: ObservableObject {
         .currency(code: currencyCode)
     }
 
+    var currentDayOfMonth: Int {
+        Calendar.current.component(.day, from: Date())
+    }
+
+    var daysInCurrentMonth: Int {
+        Calendar.current.range(of: .day, in: .month, for: Date())?.count ?? currentDayOfMonth
+    }
+
+    var expectedDailySpend: Double {
+        effectiveMonthlyLimit / Double(max(1, daysInCurrentMonth))
+    }
+
     var awarenessMessages: [String] {
         var messages: [String] = []
 
@@ -201,6 +213,54 @@ final class AppState: ObservableObject {
             savedApplied: savedApplied
         )
         transactions.insert(item, at: 0)
+    }
+
+    func shouldPromptIrregularPurchase(amount: Double) -> Bool {
+        guard amount > 0 else { return false }
+        let expenseTransactions = transactions.filter { $0.type == .expense }
+        let averageExpense =
+            expenseTransactions.map(\.amount).reduce(0, +) / Double(max(1, expenseTransactions.count))
+        return amount > max(averageExpense * 2.5, effectiveMonthlyLimit * 0.25)
+    }
+
+    func dailyActualCumulative() -> [Double] {
+        let calendar = Calendar.current
+        let now = Date()
+        let day = currentDayOfMonth
+
+        let monthTransactions = transactions.filter {
+            calendar.isDate($0.date, equalTo: now, toGranularity: .month) && $0.type == .expense
+        }
+
+        var cumulative: [Double] = []
+        var runningTotal = 0.0
+        for currentDay in 1...max(1, day) {
+            let dayTotal = monthTransactions
+                .filter { calendar.component(.day, from: $0.date) == currentDay }
+                .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
+            runningTotal += dayTotal
+            cumulative.append(runningTotal)
+        }
+        return cumulative
+    }
+
+    var projectedEndOfMonthSpend: Double {
+        let currentActual = dailyActualCumulative().last ?? 0
+        let remainingDays = max(0, daysInCurrentMonth - currentDayOfMonth)
+        return currentActual + expectedDailySpend * Double(remainingDays)
+    }
+
+    func projectedAmountForDay(dayNumber: Int) -> Double {
+        let cumulative = dailyActualCumulative()
+        if dayNumber <= currentDayOfMonth {
+            return cumulative[min(dayNumber - 1, max(0, cumulative.count - 1))]
+        }
+
+        guard let currentActual = cumulative.last else { return 0 }
+        let remainingDays = max(1, daysInCurrentMonth - currentDayOfMonth)
+        let perDayProjection = (projectedEndOfMonthSpend - currentActual) / Double(remainingDays)
+        let futureOffset = dayNumber - currentDayOfMonth
+        return currentActual + perDayProjection * Double(futureOffset)
     }
 
     func apply(onboardingData: OnboardingData) {

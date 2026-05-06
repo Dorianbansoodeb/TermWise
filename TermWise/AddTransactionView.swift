@@ -82,7 +82,7 @@ struct AddTransactionView: View {
             Button("Save Transaction") {
                 let resolvedCategory = resolveCategory()
                 let parsedAmount = Double(amount) ?? 0
-                if shouldPromptIrregularPurchase(amount: parsedAmount) {
+                if type == .expense && appState.shouldPromptIrregularPurchase(amount: parsedAmount) {
                     pendingAmount = parsedAmount
                     pendingCategory = resolvedCategory
                     showIrregularPrompt = true
@@ -140,15 +140,6 @@ struct AddTransactionView: View {
             return trimmed.isEmpty ? "Other" : trimmed
         }
         return category
-    }
-
-    private func shouldPromptIrregularPurchase(amount: Double) -> Bool {
-        guard type == .expense, amount > 0 else { return false }
-        let averageExpense = appState.transactions
-            .filter { $0.type == .expense }
-            .map(\.amount)
-            .reduce(0, +) / Double(max(1, appState.transactions.filter { $0.type == .expense }.count))
-        return amount > max(averageExpense * 2.5, appState.effectiveMonthlyLimit * 0.25)
     }
 
     private func saveTransaction(amount: Double, category: String, savedApplied: Double) {
