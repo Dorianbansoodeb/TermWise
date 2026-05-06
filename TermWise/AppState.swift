@@ -36,11 +36,18 @@ final class AppState: ObservableObject {
     private static let storageKey = "termwise.appState.v1"
     private var cancellables = Set<AnyCancellable>()
 
+    // Core profile and goals
     @Published var currentTerm: String = "Fall 2026"
     @Published var monthlyIncome: Double = 3200
     @Published var expectedCoopIncome: Double = 0
     @Published var tuitionGoal: Double = 4300
     @Published var monthlySpendingBudget: Double = 1480
+    @Published var manualMonthlyLimit: Double? = nil
+    @Published var desiredSavingsRate: Double = 15 // percent of income the student wants to save
+
+    // Currency
+    @Published var currencyCode: String = "USD"
+
     @Published var draftTransactionType: TransactionType = .expense
 
     @Published var budgetItems: [BudgetItem] = [
@@ -56,6 +63,14 @@ final class AppState: ObservableObject {
         .init(id: UUID(), amount: 46, category: "Groceries", note: "Weekly grocery run", date: Date().addingTimeInterval(-86400 * 1), type: .expense),
         .init(id: UUID(), amount: 8.75, category: "Eating Out", note: "Starbucks", date: Date(), type: .expense),
         .init(id: UUID(), amount: 100, category: "Gift", note: "Birthday gift", date: Date(), type: .income)
+    ]
+
+    // Simple local history for charts in profile panel
+    @Published var monthlyHistory: [MonthlySummary] = [
+        .init(id: UUID(), monthLabel: "Jan", planned: 1400, actual: 1320, saved: 80),
+        .init(id: UUID(), monthLabel: "Feb", planned: 1450, actual: 1520, saved: -70),
+        .init(id: UUID(), monthLabel: "Mar", planned: 1500, actual: 1385, saved: 115),
+        .init(id: UUID(), monthLabel: "Apr", planned: 1480, actual: 1410, saved: 70)
     ]
 
     init() {
@@ -81,6 +96,19 @@ final class AppState: ObservableObject {
 
     var monthlyBalance: Double {
         monthlyIncome + totalActualIncome - totalActualSpend
+    }
+
+    var effectiveMonthlyLimit: Double {
+        manualMonthlyLimit ?? monthlySpendingBudget
+    }
+
+    var projectedSavingsThisMonth: Double {
+        let targetSavingsAmount = monthlyIncome * (desiredSavingsRate / 100)
+        return max(0, targetSavingsAmount - max(0, totalActualSpend - effectiveMonthlyLimit))
+    }
+
+    var currencyFormatter: FloatingPointFormatStyle<Double>.Currency {
+        .currency(code: currencyCode)
     }
 
     var awarenessMessages: [String] {
@@ -145,6 +173,9 @@ final class AppState: ObservableObject {
                 tuitionGoal: tuitionGoal,
                 monthlySpendingBudget: monthlySpendingBudget
             ),
+            manualMonthlyLimit: manualMonthlyLimit,
+            desiredSavingsRate: desiredSavingsRate,
+            currencyCode: currencyCode,
             budgetItems: budgetItems,
             transactions: transactions
         )
@@ -166,6 +197,9 @@ final class AppState: ObservableObject {
             expectedCoopIncome = decoded.onboarding.expectedCoopIncome
             tuitionGoal = decoded.onboarding.tuitionGoal
             monthlySpendingBudget = decoded.onboarding.monthlySpendingBudget
+            manualMonthlyLimit = decoded.manualMonthlyLimit
+            desiredSavingsRate = decoded.desiredSavingsRate
+            currencyCode = decoded.currencyCode
             budgetItems = decoded.budgetItems
             transactions = decoded.transactions
         } catch {
@@ -176,6 +210,19 @@ final class AppState: ObservableObject {
 
 private struct PersistedState: Codable {
     let onboarding: OnboardingData
+    let manualMonthlyLimit: Double?
+    let desiredSavingsRate: Double
+    let currencyCode: String
     let budgetItems: [BudgetItem]
     let transactions: [TransactionItem]
+}
+
+struct MonthlySummary: Identifiable, Codable {
+    let id: UUID
+    let monthLabel: String
+    let planned: Double
+    let actual: Double
+    let saved: Double
+
+    var isOver: Bool { saved < 0 }
 }

@@ -2,71 +2,105 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let onQuickAddExpense: () -> Void
     let onQuickAddIncome: () -> Void
 
+    @State private var showConverter: Bool = false
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Plan vs. Reality")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-
-                Text(appState.currentTerm)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                HStack(spacing: 12) {
-                    metricCard(title: "Balance", value: appState.monthlyBalance, color: .blue)
-                    metricCard(title: "Actual Spend", value: appState.totalActualSpend, color: .orange)
+            if horizontalSizeClass == .regular {
+                HStack(alignment: .top, spacing: 16) {
+                    mainContent
+                    ProfilePanelView()
+                        .frame(width: 280)
                 }
-
-                HStack(spacing: 12) {
-                    metricCard(title: "Planned Spend", value: appState.totalPlannedSpend, color: .indigo)
-                    metricCard(title: "Delta", value: appState.totalPlannedSpend - appState.totalActualSpend, color: .green)
+                .padding()
+            } else {
+                VStack(spacing: 16) {
+                    mainContent
+                    ProfilePanelView()
                 }
-
-                HStack(spacing: 12) {
-                    Button("Quick Add Expense", action: onQuickAddExpense)
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-                    Button("Quick Add Income", action: onQuickAddIncome)
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Awareness")
-                        .font(.headline)
-                    ForEach(appState.awarenessMessages, id: \.self) { message in
-                        infoChip(text: message)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Category Progress")
-                        .font(.headline)
-                    ForEach(appState.budgetItems) { item in
-                        let spent = appState.actualAmount(for: item.category)
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(item.category)
-                                    .fontWeight(.semibold)
-                                Spacer()
-                                Text("\(spent.formatted(.currency(code: "USD"))) / \(item.planned.formatted(.currency(code: "USD")))")
-                                    .foregroundStyle(.secondary)
-                            }
-                            ProgressView(value: spent, total: item.planned == 0 ? 1 : item.planned)
-                                .tint(spent > item.planned ? .red : .blue)
-                        }
-                    }
-                }
+                .padding()
             }
-            .padding()
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Dashboard")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button("Currency converter") {
+                        showConverter = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        .sheet(isPresented: $showConverter) {
+            CurrencyConverterView()
+                .environmentObject(appState)
+        }
+    }
+
+    private var mainContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Plan vs. Reality")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+
+            Text(appState.currentTerm)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 12) {
+                metricCard(title: "Balance", value: appState.monthlyBalance, color: .blue)
+                metricCard(title: "Actual Spend", value: appState.totalActualSpend, color: .orange)
+            }
+
+            HStack(spacing: 12) {
+                metricCard(title: "Planned Spend", value: appState.totalPlannedSpend, color: .indigo)
+                metricCard(title: "Delta", value: appState.totalPlannedSpend - appState.totalActualSpend, color: .green)
+            }
+
+            HStack(spacing: 12) {
+                Button("Quick Add Expense", action: onQuickAddExpense)
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                Button("Quick Add Income", action: onQuickAddIncome)
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Awareness")
+                    .font(.headline)
+                ForEach(appState.awarenessMessages, id: \.self) { message in
+                    infoChip(text: message)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Category Progress")
+                    .font(.headline)
+                ForEach(appState.budgetItems) { item in
+                    let spent = appState.actualAmount(for: item.category)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(item.category)
+                                .fontWeight(.semibold)
+                            Spacer()
+                            Text("\(spent.formatted(appState.currencyFormatter)) / \(item.planned.formatted(appState.currencyFormatter))")
+                                .foregroundStyle(.secondary)
+                        }
+                        ProgressView(value: spent, total: item.planned == 0 ? 1 : item.planned)
+                            .tint(spent > item.planned ? .red : .blue)
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -75,7 +109,7 @@ struct DashboardView: View {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(value.formatted(.currency(code: "USD")))
+            Text(value.formatted(appState.currencyFormatter))
                 .font(.title3)
                 .fontWeight(.bold)
                 .foregroundStyle(color)
