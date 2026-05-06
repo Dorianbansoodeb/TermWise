@@ -58,7 +58,7 @@ struct TransactionsView: View {
         .navigationTitle("Transactions")
         .searchable(text: $searchText, prompt: "Search merchant or category")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 AppOverflowMenu()
             }
         }

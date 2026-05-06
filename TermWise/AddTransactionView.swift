@@ -128,7 +128,7 @@ struct AddTransactionView: View {
             Text("This seems like an irregular/large purchase. Would you like to use your saved amount towards this transaction?")
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 AppOverflowMenu()
             }
         }

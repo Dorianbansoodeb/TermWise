@@ -11,7 +11,7 @@ struct ProfileView: View {
         }
         .navigationTitle("Profile")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 AppOverflowMenu()
             }
         }

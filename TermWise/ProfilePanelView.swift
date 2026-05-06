@@ -284,7 +284,7 @@ private struct MonthDetailPopup: View {
             .padding()
             .background(Color(.systemGroupedBackground))
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button {
                         dismiss()
                     } label: {

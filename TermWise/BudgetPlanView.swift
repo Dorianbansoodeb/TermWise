@@ -19,7 +19,7 @@ struct BudgetPlanView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Budget Plan")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 AppOverflowMenu()
             }
             ToolbarItemGroup(placement: .keyboard) {

@@ -14,7 +14,7 @@ struct DashboardView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Home")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 AppOverflowMenu()
             }
         }
