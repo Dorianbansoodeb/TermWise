@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct TransactionsView: View {
@@ -32,7 +33,7 @@ struct TransactionsView: View {
 
     private func signedAmountText(for transaction: TransactionItem) -> String {
         let sign = transaction.type == .expense ? "-" : "+"
-        return "\(sign)\(transaction.amount, format: .currency(code: "USD"))"
+        return "\(sign)\(transaction.amount.formatted(.currency(code: "USD")))"
     }
 }
 
