@@ -129,8 +129,8 @@ struct ProfilePanelView: View {
                         Text("50%")
                             .font(.caption2)
                     }
-                    .onChange(of: savingsSlider) { newValue in
-                        appState.desiredSavingsRate = newValue
+                    .onChange(of: savingsSlider) {
+                        appState.desiredSavingsRate = savingsSlider
                     }
                     Text("\(Int(savingsSlider))%")
                         .font(.caption)
