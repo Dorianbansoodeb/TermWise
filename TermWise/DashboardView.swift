@@ -43,7 +43,7 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
 
             expectedSavedCard
-            monthlyExpenseBarCard
+            monthlyExpenseBarCard()
             spendTrendCard
             quickActions
             spendingProgressCard
@@ -105,18 +105,18 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
-    private var monthlyExpenseBarCard: some View {
+    private func monthlyExpenseBarCard() -> some View {
         let limit = max(1, appState.effectiveMonthlyLimit)
         let totalSpent = appState.totalActualSpend
         let cappedSpent = min(totalSpent, limit)
         let overflow = max(0, totalSpent - limit)
 
-        VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 12) {
             Text("Monthly Expense Usage")
                 .font(.headline)
 
             GeometryReader { proxy in
-                let width = proxy.size.width
+                let chartWidth = proxy.size.width
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.12))
@@ -126,7 +126,7 @@ struct DashboardView: View {
                         ForEach(appState.budgetItems) { item in
                             let spent = appState.actualAmount(for: item.category)
                             let segmentRatio = spent / max(1, cappedSpent)
-                            let segmentWidth = width * CGFloat(segmentRatio) * CGFloat(cappedSpent / limit)
+                            let segmentWidth = chartWidth * CGFloat(segmentRatio) * CGFloat(cappedSpent / limit)
                             Rectangle()
                                 .fill(colorForCategory(item.category))
                                 .frame(width: segmentWidth, height: 18)
@@ -135,7 +135,7 @@ struct DashboardView: View {
                         if overflow > 0 {
                             Rectangle()
                                 .fill(Color.red)
-                                .frame(width: width * CGFloat(overflow / limit), height: 18)
+                                .frame(width: chartWidth * CGFloat(overflow / limit), height: 18)
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 8))
