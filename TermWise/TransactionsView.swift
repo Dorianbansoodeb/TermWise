@@ -53,11 +53,15 @@ struct TransactionsView: View {
                         ForEach(dayTransactions) { transaction in
                             TransactionListRow(
                                 transaction: transaction,
-                                archivedIds: $archivedIds,
-                                pinnedIds: $pinnedIds,
-                                completedIds: $completedIds,
-                                markedIds: $markedIds,
-                                moreActionsTarget: $moreActionsTarget
+                                isArchived: archivedIds.contains(transaction.id),
+                                isPinned: pinnedIds.contains(transaction.id),
+                                isCompleted: completedIds.contains(transaction.id),
+                                isMarked: markedIds.contains(transaction.id),
+                                onArchive: { archivedIds.insert(transaction.id) },
+                                onPin: { toggle(&pinnedIds, transaction.id) },
+                                onComplete: { toggle(&completedIds, transaction.id) },
+                                onMark: { toggle(&markedIds, transaction.id) },
+                                onMore: { moreActionsTarget = transaction }
                             )
                             .environmentObject(appState)
                         }
@@ -139,16 +143,27 @@ struct TransactionsView: View {
         return "\(sign)\(netAmount.formatted(appState.currencyFormatter))"
     }
 
+    private func toggle(_ set: inout Set<UUID>, _ id: UUID) {
+        if set.contains(id) {
+            set.remove(id)
+        } else {
+            set.insert(id)
+        }
+    }
 }
 
 private struct TransactionListRow: View {
     @EnvironmentObject private var appState: AppState
     let transaction: TransactionItem
-    @Binding var archivedIds: Set<UUID>
-    @Binding var pinnedIds: Set<UUID>
-    @Binding var completedIds: Set<UUID>
-    @Binding var markedIds: Set<UUID>
-    @Binding var moreActionsTarget: TransactionItem?
+    let isArchived: Bool
+    let isPinned: Bool
+    let isCompleted: Bool
+    let isMarked: Bool
+    let onArchive: () -> Void
+    let onPin: () -> Void
+    let onComplete: () -> Void
+    let onMark: () -> Void
+    let onMore: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -169,15 +184,25 @@ private struct TransactionListRow: View {
                         .font(.caption)
                         .foregroundStyle(.blue)
                 }
-                if pinnedIds.contains(transaction.id) {
+                if isPinned {
                     Text("Pinned")
                         .font(.caption2)
                         .foregroundStyle(.yellow)
                 }
-                if completedIds.contains(transaction.id) {
+                if isCompleted {
                     Text("Completed")
                         .font(.caption2)
                         .foregroundStyle(.green)
+                }
+                if isMarked {
+                    Text("Marked")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+                if isArchived {
+                    Text("Archived")
+                        .font(.caption2)
+                        .foregroundStyle(.gray)
                 }
             }
 
@@ -194,35 +219,25 @@ private struct TransactionListRow: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
-            Button {
-                archivedIds.insert(transaction.id)
-            } label: {
+            Button(action: onArchive) {
                 Label("Archive", systemImage: "archivebox")
             }
             .tint(.gray)
-            Button {
-                moreActionsTarget = transaction
-            } label: {
+            Button(action: onMore) {
                 Label("More", systemImage: "ellipsis")
             }
             .tint(.blue)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                toggleMembership(of: transaction.id, in: &markedIds)
-            } label: {
+            Button(action: onMark) {
                 Label("Mark", systemImage: "flag")
             }
             .tint(.orange)
-            Button {
-                toggleMembership(of: transaction.id, in: &pinnedIds)
-            } label: {
+            Button(action: onPin) {
                 Label("Pin", systemImage: "pin")
             }
             .tint(.yellow)
-            Button {
-                toggleMembership(of: transaction.id, in: &completedIds)
-            } label: {
+            Button(action: onComplete) {
                 Label("Complete", systemImage: "checkmark.circle")
             }
             .tint(.green)
@@ -249,10 +264,6 @@ private struct TransactionListRow: View {
         let sign = transaction.type == .expense ? "-" : "+"
         let netAmount = transaction.type == .expense ? max(0, transaction.amount - transaction.savedApplied) : transaction.amount
         return "\(sign)\(netAmount.formatted(appState.currencyFormatter))"
-    }
-
-    private func toggleMembership(of id: UUID, in set: inout Set<UUID>) {
-        if set.contains(id) { set.remove(id) } else { set.insert(id) }
     }
 
     private func duplicateIfExpense(_ transaction: TransactionItem) {
