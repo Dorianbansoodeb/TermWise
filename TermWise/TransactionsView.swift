@@ -51,58 +51,12 @@ struct TransactionsView: View {
                     Section(day.formatted(date: .abbreviated, time: .omitted)) {
                         ForEach(dayTransactions) { transaction in
                             transactionRow(transaction)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    appState.deleteTransaction(id: transaction.id)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    trailingSwipeActions(for: transaction)
                                 }
-                                Button {
-                                    archivedIds.insert(transaction.id)
-                                } label: {
-                                    Label("Archive", systemImage: "archivebox")
+                                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                    leadingSwipeActions(for: transaction)
                                 }
-                                .tint(.gray)
-                                Button {
-                                    moreActionsTarget = transaction
-                                } label: {
-                                    Label("More", systemImage: "ellipsis")
-                                }
-                                .tint(.blue)
-                            }
-                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                Button {
-                                    if markedIds.contains(transaction.id) { markedIds.remove(transaction.id) } else { markedIds.insert(transaction.id) }
-                                } label: {
-                                    Label("Mark", systemImage: "flag")
-                                }
-                                .tint(.orange)
-                                Button {
-                                    if pinnedIds.contains(transaction.id) { pinnedIds.remove(transaction.id) } else { pinnedIds.insert(transaction.id) }
-                                } label: {
-                                    Label("Pin", systemImage: "pin")
-                                }
-                                .tint(.yellow)
-                                Button {
-                                    if completedIds.contains(transaction.id) { completedIds.remove(transaction.id) } else { completedIds.insert(transaction.id) }
-                                } label: {
-                                    Label("Complete", systemImage: "checkmark.circle")
-                                }
-                                .tint(.green)
-                                Button {
-                                    if transaction.type == .expense {
-                                        appState.addTransaction(
-                                            amount: transaction.amount,
-                                            category: transaction.category,
-                                            note: "Duplicate: \(transaction.note)",
-                                            type: .expense
-                                        )
-                                    }
-                                } label: {
-                                    Label("Secondary", systemImage: "plus.rectangle.on.rectangle")
-                                }
-                                .tint(.indigo)
-                            }
                         }
                     }
                 }
@@ -229,6 +183,74 @@ struct TransactionsView: View {
         if text.contains("eat") || text.contains("coffee") { return "fork.knife" }
         if text.contains("pay") || text.contains("income") { return "dollarsign.circle.fill" }
         return "tag.fill"
+    }
+
+    @ViewBuilder
+    private func trailingSwipeActions(for transaction: TransactionItem) -> some View {
+        Button(role: .destructive) {
+            appState.deleteTransaction(id: transaction.id)
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+
+        Button {
+            archivedIds.insert(transaction.id)
+        } label: {
+            Label("Archive", systemImage: "archivebox")
+        }
+        .tint(.gray)
+
+        Button {
+            moreActionsTarget = transaction
+        } label: {
+            Label("More", systemImage: "ellipsis")
+        }
+        .tint(.blue)
+    }
+
+    @ViewBuilder
+    private func leadingSwipeActions(for transaction: TransactionItem) -> some View {
+        Button {
+            toggleMembership(of: transaction.id, in: &markedIds)
+        } label: {
+            Label("Mark", systemImage: "flag")
+        }
+        .tint(.orange)
+
+        Button {
+            toggleMembership(of: transaction.id, in: &pinnedIds)
+        } label: {
+            Label("Pin", systemImage: "pin")
+        }
+        .tint(.yellow)
+
+        Button {
+            toggleMembership(of: transaction.id, in: &completedIds)
+        } label: {
+            Label("Complete", systemImage: "checkmark.circle")
+        }
+        .tint(.green)
+
+        Button {
+            duplicateIfExpense(transaction)
+        } label: {
+            Label("Secondary", systemImage: "plus.rectangle.on.rectangle")
+        }
+        .tint(.indigo)
+    }
+
+    private func toggleMembership(of id: UUID, in set: inout Set<UUID>) {
+        if set.contains(id) { set.remove(id) } else { set.insert(id) }
+    }
+
+    private func duplicateIfExpense(_ transaction: TransactionItem) {
+        guard transaction.type == .expense else { return }
+        appState.addTransaction(
+            amount: transaction.amount,
+            category: transaction.category,
+            note: "Duplicate: \(transaction.note)",
+            type: .expense
+        )
     }
 }
 
