@@ -47,25 +47,8 @@ struct TransactionsView: View {
                     }
                 }
 
-                ForEach(groupedDates, id: \.self) { day in
-                    let dayTransactions = groupedTransactions[day] ?? []
-                    Section(day.formatted(date: .abbreviated, time: .omitted)) {
-                        ForEach(dayTransactions) { transaction in
-                            TransactionListRow(
-                                transaction: transaction,
-                                isArchived: archivedIds.contains(transaction.id),
-                                isPinned: pinnedIds.contains(transaction.id),
-                                isCompleted: completedIds.contains(transaction.id),
-                                isMarked: markedIds.contains(transaction.id),
-                                onArchive: { archivedIds.insert(transaction.id) },
-                                onPin: { toggle(&pinnedIds, transaction.id) },
-                                onComplete: { toggle(&completedIds, transaction.id) },
-                                onMark: { toggle(&markedIds, transaction.id) },
-                                onMore: { moreActionsTarget = transaction }
-                            )
-                            .environmentObject(appState)
-                        }
-                    }
+                ForEach(filteredTransactions) { transaction in
+                    transactionRow(for: transaction)
                 }
             }
             .listStyle(.insetGrouped)
@@ -115,16 +98,6 @@ struct TransactionsView: View {
         }
     }
 
-    private var groupedTransactions: [Date: [TransactionItem]] {
-        Dictionary(grouping: filteredTransactions) { transaction in
-            Calendar.current.startOfDay(for: transaction.date)
-        }
-    }
-
-    private var groupedDates: [Date] {
-        groupedTransactions.keys.sorted(by: >)
-    }
-
     private var totalIncome: Double {
         filteredTransactions
             .filter { $0.type == .income }
@@ -150,6 +123,36 @@ struct TransactionsView: View {
             set.insert(id)
         }
     }
+
+    @ViewBuilder
+    private func transactionRow(for transaction: TransactionItem) -> some View {
+        let id = transaction.id
+        TransactionListRow(
+            transaction: transaction,
+            isArchived: archivedIds.contains(id),
+            isPinned: pinnedIds.contains(id),
+            isCompleted: completedIds.contains(id),
+            isMarked: markedIds.contains(id),
+            onArchive: { archivedIds.insert(id) },
+            onPin: { togglePinned(id) },
+            onComplete: { toggleCompleted(id) },
+            onMark: { toggleMarked(id) },
+            onMore: { moreActionsTarget = transaction }
+        )
+        .environmentObject(appState)
+    }
+
+    private func togglePinned(_ id: UUID) {
+        toggle(&pinnedIds, id)
+    }
+
+    private func toggleCompleted(_ id: UUID) {
+        toggle(&completedIds, id)
+    }
+
+    private func toggleMarked(_ id: UUID) {
+        toggle(&markedIds, id)
+    }
 }
 
 private struct TransactionListRow: View {
@@ -167,45 +170,8 @@ private struct TransactionListRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: iconName)
-                .foregroundStyle(transaction.type == .expense ? .orange : .green)
-                .frame(width: 30, height: 30)
-                .background((transaction.type == .expense ? Color.orange : Color.green).opacity(0.12))
-                .clipShape(Circle())
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(transaction.category)
-                    .fontWeight(.semibold)
-                Text(transaction.note.isEmpty ? "No note" : transaction.note)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                if transaction.type == .expense && transaction.savedApplied > 0 {
-                    Text("Used \(transaction.savedApplied.formatted(appState.currencyFormatter)) from saved")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-                }
-                if isPinned {
-                    Text("Pinned")
-                        .font(.caption2)
-                        .foregroundStyle(.yellow)
-                }
-                if isCompleted {
-                    Text("Completed")
-                        .font(.caption2)
-                        .foregroundStyle(.green)
-                }
-                if isMarked {
-                    Text("Marked")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-                if isArchived {
-                    Text("Archived")
-                        .font(.caption2)
-                        .foregroundStyle(.gray)
-                }
-            }
-
+            leadingIcon
+            rowDetails
             Spacer()
 
             Text(amountText)
@@ -247,6 +213,54 @@ private struct TransactionListRow: View {
                 Label("Secondary", systemImage: "plus.rectangle.on.rectangle")
             }
             .tint(.indigo)
+        }
+    }
+
+    private var leadingIcon: some View {
+        Image(systemName: iconName)
+            .foregroundStyle(transaction.type == .expense ? .orange : .green)
+            .frame(width: 30, height: 30)
+            .background((transaction.type == .expense ? Color.orange : Color.green).opacity(0.12))
+            .clipShape(Circle())
+    }
+
+    private var rowDetails: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(transaction.category)
+                .fontWeight(.semibold)
+            Text(transaction.note.isEmpty ? "No note" : transaction.note)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if transaction.type == .expense && transaction.savedApplied > 0 {
+                Text("Used \(transaction.savedApplied.formatted(appState.currencyFormatter)) from saved")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+            }
+            statusBadges
+        }
+    }
+
+    @ViewBuilder
+    private var statusBadges: some View {
+        if isPinned {
+            Text("Pinned")
+                .font(.caption2)
+                .foregroundStyle(.yellow)
+        }
+        if isCompleted {
+            Text("Completed")
+                .font(.caption2)
+                .foregroundStyle(.green)
+        }
+        if isMarked {
+            Text("Marked")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+        }
+        if isArchived {
+            Text("Archived")
+                .font(.caption2)
+                .foregroundStyle(.gray)
         }
     }
 
