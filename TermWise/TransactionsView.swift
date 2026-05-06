@@ -47,45 +47,10 @@ struct TransactionsView: View {
                 }
 
                 ForEach(groupedDates, id: \.self) { day in
+                    let dayTransactions = groupedTransactions[day] ?? []
                     Section(day.formatted(date: .abbreviated, time: .omitted)) {
-                        ForEach(groupedTransactions[day] ?? []) { transaction in
-                            HStack(spacing: 12) {
-                                Image(systemName: iconName(for: transaction.category))
-                                    .foregroundStyle(.blue)
-                                    .frame(width: 30, height: 30)
-                                    .background(Color.blue.opacity(0.1))
-                                    .clipShape(Circle())
-
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(transaction.category)
-                                        .fontWeight(.semibold)
-                                    Text(transaction.note.isEmpty ? "No note" : transaction.note)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    if transaction.type == .expense && transaction.savedApplied > 0 {
-                                        Text("Used \(transaction.savedApplied.formatted(appState.currencyFormatter)) from saved")
-                                            .font(.caption)
-                                            .foregroundStyle(.blue)
-                                    }
-                                    if pinnedIds.contains(transaction.id) {
-                                        Text("Pinned")
-                                            .font(.caption2)
-                                            .foregroundStyle(.yellow)
-                                    }
-                                    if completedIds.contains(transaction.id) {
-                                        Text("Completed")
-                                            .font(.caption2)
-                                            .foregroundStyle(.green)
-                                    }
-                                }
-
-                                Spacer()
-
-                                Text(signedAmountText(for: transaction))
-                                    .fontWeight(.bold)
-                                    .foregroundStyle(transaction.type == .expense ? .red : .green)
-                            }
-                            .padding(.vertical, 4)
+                        ForEach(dayTransactions) { transaction in
+                            transactionRow(transaction)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button(role: .destructive) {
                                     appState.deleteTransaction(id: transaction.id)
@@ -185,6 +150,47 @@ struct TransactionsView: View {
             $0.category.localizedCaseInsensitiveContains(searchText) ||
             $0.note.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    @ViewBuilder
+    private func transactionRow(_ transaction: TransactionItem) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: iconName(for: transaction.category))
+                .foregroundStyle(.blue)
+                .frame(width: 30, height: 30)
+                .background(Color.blue.opacity(0.1))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(transaction.category)
+                    .fontWeight(.semibold)
+                Text(transaction.note.isEmpty ? "No note" : transaction.note)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                if transaction.type == .expense && transaction.savedApplied > 0 {
+                    Text("Used \(transaction.savedApplied.formatted(appState.currencyFormatter)) from saved")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                }
+                if pinnedIds.contains(transaction.id) {
+                    Text("Pinned")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                }
+                if completedIds.contains(transaction.id) {
+                    Text("Completed")
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+                }
+            }
+
+            Spacer()
+
+            Text(signedAmountText(for: transaction))
+                .fontWeight(.bold)
+                .foregroundStyle(transaction.type == .expense ? .red : .green)
+        }
+        .padding(.vertical, 4)
     }
 
     private var groupedTransactions: [Date: [TransactionItem]] {
