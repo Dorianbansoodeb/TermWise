@@ -2,13 +2,36 @@ import SwiftUI
 
 struct BudgetPlanView: View {
     @EnvironmentObject private var appState: AppState
+    @FocusState private var focusedCategoryId: UUID?
 
     var body: some View {
         List {
-            Section("Monthly Budget Plan") {
-                ForEach(appState.budgetItems) { item in
+            Section("This Month") {
+                HStack {
+                    Text("Planned Total")
+                    Spacer()
+                    Text(appState.totalPlannedSpend.formatted(.currency(code: "USD")))
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Text("Actual Spend")
+                    Spacer()
+                    Text(appState.totalActualSpend.formatted(.currency(code: "USD")))
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Text("Delta")
+                    Spacer()
+                    Text((appState.totalPlannedSpend - appState.totalActualSpend).formatted(.currency(code: "USD")))
+                        .foregroundStyle(appState.totalActualSpend > appState.totalPlannedSpend ? .red : .green)
+                        .fontWeight(.semibold)
+                }
+            }
+
+            Section("Monthly Budget Plan (Editable)") {
+                ForEach($appState.budgetItems) { $item in
                     let actual = appState.actualAmount(for: item.category)
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text(item.category)
                                 .fontWeight(.semibold)
@@ -24,14 +47,17 @@ struct BudgetPlanView: View {
                         HStack {
                             Text("Planned")
                             Spacer()
-                            Text(item.planned, format: .currency(code: "USD"))
-                                .foregroundStyle(.secondary)
+                            TextField("0", value: $item.planned, format: .number)
+                                .multilineTextAlignment(.trailing)
+                                .keyboardType(.decimalPad)
+                                .focused($focusedCategoryId, equals: item.id)
                         }
+
                         HStack {
                             Text("Actual")
                             Spacer()
-                            Text(actual, format: .currency(code: "USD"))
-                                .foregroundStyle(actual > item.planned ? .red : .primary)
+                            Text(actual.formatted(.currency(code: "USD")))
+                                .foregroundStyle(actual > item.planned ? .red : .secondary)
                         }
                     }
                     .padding(.vertical, 4)
@@ -39,6 +65,12 @@ struct BudgetPlanView: View {
             }
         }
         .navigationTitle("Budget Plan")
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedCategoryId = nil }
+            }
+        }
     }
 }
 

@@ -9,8 +9,8 @@ enum TransactionType: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct TransactionItem: Identifiable {
-    let id = UUID()
+struct TransactionItem: Identifiable, Codable {
+    let id: UUID
     let amount: Double
     let category: String
     let note: String
@@ -18,13 +18,13 @@ struct TransactionItem: Identifiable {
     let type: TransactionType
 }
 
-struct BudgetItem: Identifiable {
-    let id = UUID()
+struct BudgetItem: Identifiable, Codable {
+    let id: UUID
     let category: String
     var planned: Double
 }
 
-struct OnboardingData {
+struct OnboardingData: Codable {
     var currentTerm: String
     var monthlyIncome: Double
     var expectedCoopIncome: Double
@@ -33,6 +33,9 @@ struct OnboardingData {
 }
 
 final class AppState: ObservableObject {
+    private static let storageKey = "termwise.appState.v1"
+    private var cancellables = Set<AnyCancellable>()
+
     @Published var currentTerm: String = "Fall 2026"
     @Published var monthlyIncome: Double = 3200
     @Published var expectedCoopIncome: Double = 0
@@ -41,19 +44,24 @@ final class AppState: ObservableObject {
     @Published var draftTransactionType: TransactionType = .expense
 
     @Published var budgetItems: [BudgetItem] = [
-        .init(category: "Rent", planned: 900),
-        .init(category: "Groceries", planned: 280),
-        .init(category: "Transportation", planned: 120),
-        .init(category: "Eating Out", planned: 140),
-        .init(category: "Tuition/Savings", planned: 300)
+        .init(id: UUID(), category: "Rent", planned: 900),
+        .init(id: UUID(), category: "Groceries", planned: 280),
+        .init(id: UUID(), category: "Transportation", planned: 120),
+        .init(id: UUID(), category: "Eating Out", planned: 140),
+        .init(id: UUID(), category: "Tuition/Savings", planned: 300)
     ]
 
     @Published var transactions: [TransactionItem] = [
-        .init(amount: 920, category: "Paycheque", note: "Biweekly pay", date: Date().addingTimeInterval(-86400 * 2), type: .income),
-        .init(amount: 46, category: "Groceries", note: "Weekly grocery run", date: Date().addingTimeInterval(-86400 * 1), type: .expense),
-        .init(amount: 8.75, category: "Eating Out", note: "Starbucks", date: Date(), type: .expense),
-        .init(amount: 100, category: "Gift", note: "Birthday gift", date: Date(), type: .income)
+        .init(id: UUID(), amount: 920, category: "Paycheque", note: "Biweekly pay", date: Date().addingTimeInterval(-86400 * 2), type: .income),
+        .init(id: UUID(), amount: 46, category: "Groceries", note: "Weekly grocery run", date: Date().addingTimeInterval(-86400 * 1), type: .expense),
+        .init(id: UUID(), amount: 8.75, category: "Eating Out", note: "Starbucks", date: Date(), type: .expense),
+        .init(id: UUID(), amount: 100, category: "Gift", note: "Birthday gift", date: Date(), type: .income)
     ]
+
+    init() {
+        load()
+        setupAutoSave()
+    }
 
     var totalPlannedSpend: Double {
         budgetItems.reduce(0) { $0 + $1.planned }
@@ -101,7 +109,7 @@ final class AppState: ObservableObject {
     }
 
     func addTransaction(amount: Double, category: String, note: String, type: TransactionType) {
-        let item = TransactionItem(amount: amount, category: category, note: note, date: Date(), type: type)
+        let item = TransactionItem(id: UUID(), amount: amount, category: category, note: note, date: Date(), type: type)
         transactions.insert(item, at: 0)
     }
 
@@ -118,4 +126,56 @@ final class AppState: ObservableObject {
             budgetItems[lastIndex].planned = tuitionPlanned
         }
     }
+
+    private func setupAutoSave() {
+        objectWillChange
+            .debounce(for: .milliseconds(250), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.save()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func save() {
+        let snapshot = PersistedState(
+            onboarding: .init(
+                currentTerm: currentTerm,
+                monthlyIncome: monthlyIncome,
+                expectedCoopIncome: expectedCoopIncome,
+                tuitionGoal: tuitionGoal,
+                monthlySpendingBudget: monthlySpendingBudget
+            ),
+            budgetItems: budgetItems,
+            transactions: transactions
+        )
+
+        do {
+            let data = try JSONEncoder().encode(snapshot)
+            UserDefaults.standard.set(data, forKey: Self.storageKey)
+        } catch {
+            // Intentionally ignore save failures for MVP local mode
+        }
+    }
+
+    private func load() {
+        guard let data = UserDefaults.standard.data(forKey: Self.storageKey) else { return }
+        do {
+            let decoded = try JSONDecoder().decode(PersistedState.self, from: data)
+            currentTerm = decoded.onboarding.currentTerm
+            monthlyIncome = decoded.onboarding.monthlyIncome
+            expectedCoopIncome = decoded.onboarding.expectedCoopIncome
+            tuitionGoal = decoded.onboarding.tuitionGoal
+            monthlySpendingBudget = decoded.onboarding.monthlySpendingBudget
+            budgetItems = decoded.budgetItems
+            transactions = decoded.transactions
+        } catch {
+            // If decoding fails (schema changes), fall back to defaults
+        }
+    }
+}
+
+private struct PersistedState: Codable {
+    let onboarding: OnboardingData
+    let budgetItems: [BudgetItem]
+    let transactions: [TransactionItem]
 }

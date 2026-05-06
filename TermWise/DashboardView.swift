@@ -54,7 +54,7 @@ struct DashboardView: View {
                                 Text(item.category)
                                     .fontWeight(.semibold)
                                 Spacer()
-                                Text("\(spent, format: .currency(code: "USD")) / \(item.planned, format: .currency(code: "USD"))")
+                                Text("\(spent.formatted(.currency(code: "USD"))) / \(item.planned.formatted(.currency(code: "USD")))")
                                     .foregroundStyle(.secondary)
                             }
                             ProgressView(value: spent, total: item.planned == 0 ? 1 : item.planned)
@@ -75,7 +75,7 @@ struct DashboardView: View {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(value, format: .currency(code: "USD"))
+            Text(value.formatted(.currency(code: "USD")))
                 .font(.title3)
                 .fontWeight(.bold)
                 .foregroundStyle(color)
