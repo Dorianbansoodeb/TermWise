@@ -11,6 +11,9 @@ struct AddTransactionView: View {
     @State private var customCategory: String = ""
     @State private var note: String = ""
     @State private var type: TransactionType = .expense
+    @State private var pendingAmount: Double = 0
+    @State private var pendingCategory: String = ""
+    @State private var showIrregularPrompt = false
     @FocusState private var isAmountFocused: Bool
 
     var body: some View {
@@ -78,17 +81,14 @@ struct AddTransactionView: View {
         .safeAreaInset(edge: .bottom) {
             Button("Save Transaction") {
                 let resolvedCategory = resolveCategory()
-                appState.addTransaction(
-                    amount: Double(amount) ?? 0,
-                    category: resolvedCategory,
-                    note: note,
-                    type: type
-                )
-                amount = ""
-                category = ""
-                customCategory = ""
-                note = ""
-                onSave()
+                let parsedAmount = Double(amount) ?? 0
+                if shouldPromptIrregularPurchase(amount: parsedAmount) {
+                    pendingAmount = parsedAmount
+                    pendingCategory = resolvedCategory
+                    showIrregularPrompt = true
+                } else {
+                    saveTransaction(amount: parsedAmount, category: resolvedCategory, savedApplied: 0)
+                }
             }
             .disabled((Double(amount) ?? 0) <= 0)
             .font(.headline)
@@ -104,6 +104,23 @@ struct AddTransactionView: View {
             type = defaultType
             category = type == .expense ? (expenseCategoryOptions.first ?? "Other") : (incomeCategoryOptions.first ?? "Income")
             isAmountFocused = true
+        }
+        .alert("Irregular Purchase Detected", isPresented: $showIrregularPrompt) {
+            Button("Use saved amount") {
+                let apply = min(appState.availableSavedToUse, pendingAmount)
+                saveTransaction(amount: pendingAmount, category: pendingCategory, savedApplied: apply)
+            }
+            Button("Don't use saved", role: .none) {
+                saveTransaction(amount: pendingAmount, category: pendingCategory, savedApplied: 0)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This seems like an irregular/large purchase. Would you like to use your saved amount towards this transaction?")
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                AppOverflowMenu()
+            }
         }
     }
 
@@ -123,6 +140,30 @@ struct AddTransactionView: View {
             return trimmed.isEmpty ? "Other" : trimmed
         }
         return category
+    }
+
+    private func shouldPromptIrregularPurchase(amount: Double) -> Bool {
+        guard type == .expense, amount > 0 else { return false }
+        let averageExpense = appState.transactions
+            .filter { $0.type == .expense }
+            .map(\.amount)
+            .reduce(0, +) / Double(max(1, appState.transactions.filter { $0.type == .expense }.count))
+        return amount > max(averageExpense * 2.5, appState.effectiveMonthlyLimit * 0.25)
+    }
+
+    private func saveTransaction(amount: Double, category: String, savedApplied: Double) {
+        appState.addTransaction(
+            amount: amount,
+            category: category,
+            note: note,
+            type: type,
+            savedApplied: savedApplied
+        )
+        self.amount = ""
+        self.category = ""
+        self.customCategory = ""
+        self.note = ""
+        onSave()
     }
 }
 

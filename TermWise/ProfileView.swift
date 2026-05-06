@@ -10,6 +10,11 @@ struct ProfileView: View {
             .background(Color(.systemGroupedBackground))
         }
         .navigationTitle("Profile")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                AppOverflowMenu()
+            }
+        }
     }
 }
 

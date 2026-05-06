@@ -16,6 +16,40 @@ struct TransactionItem: Identifiable, Codable {
     let note: String
     let date: Date
     let type: TransactionType
+    let savedApplied: Double
+
+    private enum CodingKeys: String, CodingKey {
+        case id, amount, category, note, date, type, savedApplied
+    }
+
+    init(
+        id: UUID,
+        amount: Double,
+        category: String,
+        note: String,
+        date: Date,
+        type: TransactionType,
+        savedApplied: Double = 0
+    ) {
+        self.id = id
+        self.amount = amount
+        self.category = category
+        self.note = note
+        self.date = date
+        self.type = type
+        self.savedApplied = savedApplied
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        amount = try container.decode(Double.self, forKey: .amount)
+        category = try container.decode(String.self, forKey: .category)
+        note = try container.decode(String.self, forKey: .note)
+        date = try container.decode(Date.self, forKey: .date)
+        type = try container.decode(TransactionType.self, forKey: .type)
+        savedApplied = try container.decodeIfPresent(Double.self, forKey: .savedApplied) ?? 0
+    }
 }
 
 struct BudgetItem: Identifiable, Codable {
@@ -84,6 +118,16 @@ final class AppState: ObservableObject {
             .reduce(0) { $0 + $1.amount }
     }
 
+    var totalSavedApplied: Double {
+        transactions
+            .filter { $0.type == .expense }
+            .reduce(0) { $0 + $1.savedApplied }
+    }
+
+    var totalNetSpend: Double {
+        max(0, totalActualSpend - totalSavedApplied)
+    }
+
     var totalActualIncome: Double {
         transactions
             .filter { $0.type == .income }
@@ -104,7 +148,11 @@ final class AppState: ObservableObject {
     }
 
     var expectedTotalSaved: Double {
-        max(0, monthlyIncome - totalActualSpend)
+        max(0, effectiveMonthlyLimit - totalNetSpend)
+    }
+
+    var availableSavedToUse: Double {
+        expectedTotalSaved
     }
 
     var currencyFormatter: FloatingPointFormatStyle<Double>.Currency {
@@ -136,8 +184,22 @@ final class AppState: ObservableObject {
             .reduce(0) { $0 + $1.amount }
     }
 
-    func addTransaction(amount: Double, category: String, note: String, type: TransactionType) {
-        let item = TransactionItem(id: UUID(), amount: amount, category: category, note: note, date: Date(), type: type)
+    func addTransaction(
+        amount: Double,
+        category: String,
+        note: String,
+        type: TransactionType,
+        savedApplied: Double = 0
+    ) {
+        let item = TransactionItem(
+            id: UUID(),
+            amount: amount,
+            category: category,
+            note: note,
+            date: Date(),
+            type: type,
+            savedApplied: savedApplied
+        )
         transactions.insert(item, at: 0)
     }
 

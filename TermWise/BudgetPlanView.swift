@@ -19,6 +19,9 @@ struct BudgetPlanView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Budget Plan")
         .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                AppOverflowMenu()
+            }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { focusedCategoryId = nil }

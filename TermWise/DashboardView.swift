@@ -6,8 +6,6 @@ struct DashboardView: View {
     let onQuickAddExpense: () -> Void
     let onQuickAddIncome: () -> Void
 
-    @State private var showConverter: Bool = false
-
     var body: some View {
         ScrollView {
             mainContent
@@ -17,18 +15,8 @@ struct DashboardView: View {
         .navigationTitle("Home")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button("Currency converter") {
-                        showConverter = true
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
+                AppOverflowMenu()
             }
-        }
-        .sheet(isPresented: $showConverter) {
-            CurrencyConverterView()
-                .environmentObject(appState)
         }
     }
 
@@ -287,7 +275,7 @@ struct DashboardView: View {
         for currentDay in 1...max(1, day) {
             let dayTotal = monthTransactions
                 .filter { calendar.component(.day, from: $0.date) == currentDay }
-                .reduce(0) { $0 + $1.amount }
+                .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
             runningTotal += dayTotal
             cumulative.append(runningTotal)
         }

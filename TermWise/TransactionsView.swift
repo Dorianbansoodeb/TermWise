@@ -57,6 +57,11 @@ struct TransactionsView: View {
                                     Text(transaction.note.isEmpty ? "No note" : transaction.note)
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
+                                    if transaction.type == .expense && transaction.savedApplied > 0 {
+                                        Text("Used \(transaction.savedApplied.formatted(appState.currencyFormatter)) from saved")
+                                            .font(.caption)
+                                            .foregroundStyle(.blue)
+                                    }
                                 }
 
                                 Spacer()
@@ -74,6 +79,11 @@ struct TransactionsView: View {
         }
         .navigationTitle("Transactions")
         .searchable(text: $searchText, prompt: "Search merchant or category")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                AppOverflowMenu()
+            }
+        }
     }
 
     private var filteredTransactions: [TransactionItem] {
@@ -115,12 +125,13 @@ struct TransactionsView: View {
     private var totalExpenses: Double {
         filteredTransactions
             .filter { $0.type == .expense }
-            .reduce(0) { $0 + $1.amount }
+            .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
     }
 
     private func signedAmountText(for transaction: TransactionItem) -> String {
         let sign = transaction.type == .expense ? "-" : "+"
-        return "\(sign)\(transaction.amount.formatted(appState.currencyFormatter))"
+        let netAmount = transaction.type == .expense ? max(0, transaction.amount - transaction.savedApplied) : transaction.amount
+        return "\(sign)\(netAmount.formatted(appState.currencyFormatter))"
     }
 
     private func iconName(for category: String) -> String {
