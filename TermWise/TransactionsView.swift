@@ -52,19 +52,13 @@ struct TransactionsView: View {
                         ForEach(dayTransactions) { transaction in
                             TransactionListRow(
                                 transaction: transaction,
-                                currencyFormatter: appState.currencyFormatter,
-                                isPinned: pinnedIds.contains(transaction.id),
-                                isCompleted: completedIds.contains(transaction.id),
-                                amountText: signedAmountText(for: transaction),
-                                iconName: iconName(for: transaction.category),
-                                onDelete: { appState.deleteTransaction(id: transaction.id) },
-                                onArchive: { archivedIds.insert(transaction.id) },
-                                onMore: { moreActionsTarget = transaction },
-                                onMark: { toggleMembership(of: transaction.id, in: &markedIds) },
-                                onPin: { toggleMembership(of: transaction.id, in: &pinnedIds) },
-                                onComplete: { toggleMembership(of: transaction.id, in: &completedIds) },
-                                onSecondary: { duplicateIfExpense(transaction) }
+                                archivedIds: $archivedIds,
+                                pinnedIds: $pinnedIds,
+                                completedIds: $completedIds,
+                                markedIds: $markedIds,
+                                moreActionsTarget: $moreActionsTarget
                             )
+                            .environmentObject(appState)
                         }
                     }
                 }
@@ -114,10 +108,48 @@ struct TransactionsView: View {
         }
     }
 
-    @ViewBuilder
-    private func transactionRow(_ transaction: TransactionItem) -> some View {
+    private var groupedTransactions: [Date: [TransactionItem]] {
+        Dictionary(grouping: filteredTransactions) { transaction in
+            Calendar.current.startOfDay(for: transaction.date)
+        }
+    }
+
+    private var groupedDates: [Date] {
+        groupedTransactions.keys.sorted(by: >)
+    }
+
+    private var totalIncome: Double {
+        filteredTransactions
+            .filter { $0.type == .income }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private var totalExpenses: Double {
+        filteredTransactions
+            .filter { $0.type == .expense }
+            .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
+    }
+
+    private func signedAmountText(for transaction: TransactionItem) -> String {
+        let sign = transaction.type == .expense ? "-" : "+"
+        let netAmount = transaction.type == .expense ? max(0, transaction.amount - transaction.savedApplied) : transaction.amount
+        return "\(sign)\(netAmount.formatted(appState.currencyFormatter))"
+    }
+
+}
+
+private struct TransactionListRow: View {
+    @EnvironmentObject private var appState: AppState
+    let transaction: TransactionItem
+    @Binding var archivedIds: Set<UUID>
+    @Binding var pinnedIds: Set<UUID>
+    @Binding var completedIds: Set<UUID>
+    @Binding var markedIds: Set<UUID>
+    @Binding var moreActionsTarget: TransactionItem?
+
+    var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: iconName(for: transaction.category))
+            Image(systemName: iconName)
                 .foregroundStyle(.blue)
                 .frame(width: 30, height: 30)
                 .background(Color.blue.opacity(0.1))
@@ -148,43 +180,60 @@ struct TransactionsView: View {
 
             Spacer()
 
-            Text(signedAmountText(for: transaction))
+            Text(amountText)
                 .fontWeight(.bold)
                 .foregroundStyle(transaction.type == .expense ? .red : .green)
         }
         .padding(.vertical, 4)
-    }
-
-    private var groupedTransactions: [Date: [TransactionItem]] {
-        Dictionary(grouping: filteredTransactions) { transaction in
-            Calendar.current.startOfDay(for: transaction.date)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                appState.deleteTransaction(id: transaction.id)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                archivedIds.insert(transaction.id)
+            } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
+            .tint(.gray)
+            Button {
+                moreActionsTarget = transaction
+            } label: {
+                Label("More", systemImage: "ellipsis")
+            }
+            .tint(.blue)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                toggleMembership(of: transaction.id, in: &markedIds)
+            } label: {
+                Label("Mark", systemImage: "flag")
+            }
+            .tint(.orange)
+            Button {
+                toggleMembership(of: transaction.id, in: &pinnedIds)
+            } label: {
+                Label("Pin", systemImage: "pin")
+            }
+            .tint(.yellow)
+            Button {
+                toggleMembership(of: transaction.id, in: &completedIds)
+            } label: {
+                Label("Complete", systemImage: "checkmark.circle")
+            }
+            .tint(.green)
+            Button {
+                duplicateIfExpense(transaction)
+            } label: {
+                Label("Secondary", systemImage: "plus.rectangle.on.rectangle")
+            }
+            .tint(.indigo)
         }
     }
 
-    private var groupedDates: [Date] {
-        groupedTransactions.keys.sorted(by: >)
-    }
-
-    private var totalIncome: Double {
-        filteredTransactions
-            .filter { $0.type == .income }
-            .reduce(0) { $0 + $1.amount }
-    }
-
-    private var totalExpenses: Double {
-        filteredTransactions
-            .filter { $0.type == .expense }
-            .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
-    }
-
-    private func signedAmountText(for transaction: TransactionItem) -> String {
-        let sign = transaction.type == .expense ? "-" : "+"
-        let netAmount = transaction.type == .expense ? max(0, transaction.amount - transaction.savedApplied) : transaction.amount
-        return "\(sign)\(netAmount.formatted(appState.currencyFormatter))"
-    }
-
-    private func iconName(for category: String) -> String {
-        let text = category.lowercased()
+    private var iconName: String {
+        let text = transaction.category.lowercased()
         if text.contains("rent") { return "house.fill" }
         if text.contains("grocer") { return "cart.fill" }
         if text.contains("transport") { return "car.fill" }
@@ -193,58 +242,10 @@ struct TransactionsView: View {
         return "tag.fill"
     }
 
-    @ViewBuilder
-    private func trailingSwipeActions(for transaction: TransactionItem) -> some View {
-        Button(role: .destructive) {
-            appState.deleteTransaction(id: transaction.id)
-        } label: {
-            Label("Delete", systemImage: "trash")
-        }
-
-        Button {
-            archivedIds.insert(transaction.id)
-        } label: {
-            Label("Archive", systemImage: "archivebox")
-        }
-        .tint(.gray)
-
-        Button {
-            moreActionsTarget = transaction
-        } label: {
-            Label("More", systemImage: "ellipsis")
-        }
-        .tint(.blue)
-    }
-
-    @ViewBuilder
-    private func leadingSwipeActions(for transaction: TransactionItem) -> some View {
-        Button {
-            toggleMembership(of: transaction.id, in: &markedIds)
-        } label: {
-            Label("Mark", systemImage: "flag")
-        }
-        .tint(.orange)
-
-        Button {
-            toggleMembership(of: transaction.id, in: &pinnedIds)
-        } label: {
-            Label("Pin", systemImage: "pin")
-        }
-        .tint(.yellow)
-
-        Button {
-            toggleMembership(of: transaction.id, in: &completedIds)
-        } label: {
-            Label("Complete", systemImage: "checkmark.circle")
-        }
-        .tint(.green)
-
-        Button {
-            duplicateIfExpense(transaction)
-        } label: {
-            Label("Secondary", systemImage: "plus.rectangle.on.rectangle")
-        }
-        .tint(.indigo)
+    private var amountText: String {
+        let sign = transaction.type == .expense ? "-" : "+"
+        let netAmount = transaction.type == .expense ? max(0, transaction.amount - transaction.savedApplied) : transaction.amount
+        return "\(sign)\(netAmount.formatted(appState.currencyFormatter))"
     }
 
     private func toggleMembership(of id: UUID, in set: inout Set<UUID>) {
@@ -259,93 +260,6 @@ struct TransactionsView: View {
             note: "Duplicate: \(transaction.note)",
             type: .expense
         )
-    }
-}
-
-private struct TransactionListRow: View {
-    let transaction: TransactionItem
-    let currencyFormatter: FloatingPointFormatStyle<Double>.Currency
-    let isPinned: Bool
-    let isCompleted: Bool
-    let amountText: String
-    let iconName: String
-    let onDelete: () -> Void
-    let onArchive: () -> Void
-    let onMore: () -> Void
-    let onMark: () -> Void
-    let onPin: () -> Void
-    let onComplete: () -> Void
-    let onSecondary: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: iconName)
-                .foregroundStyle(.blue)
-                .frame(width: 30, height: 30)
-                .background(Color.blue.opacity(0.1))
-                .clipShape(Circle())
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(transaction.category)
-                    .fontWeight(.semibold)
-                Text(transaction.note.isEmpty ? "No note" : transaction.note)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                if transaction.type == .expense && transaction.savedApplied > 0 {
-                    Text("Used \(transaction.savedApplied.formatted(currencyFormatter)) from saved")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-                }
-                if isPinned {
-                    Text("Pinned")
-                        .font(.caption2)
-                        .foregroundStyle(.yellow)
-                }
-                if isCompleted {
-                    Text("Completed")
-                        .font(.caption2)
-                        .foregroundStyle(.green)
-                }
-            }
-
-            Spacer()
-
-            Text(amountText)
-                .fontWeight(.bold)
-                .foregroundStyle(transaction.type == .expense ? .red : .green)
-        }
-        .padding(.vertical, 4)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete", systemImage: "trash")
-            }
-            Button(action: onArchive) {
-                Label("Archive", systemImage: "archivebox")
-            }
-            .tint(.gray)
-            Button(action: onMore) {
-                Label("More", systemImage: "ellipsis")
-            }
-            .tint(.blue)
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button(action: onMark) {
-                Label("Mark", systemImage: "flag")
-            }
-            .tint(.orange)
-            Button(action: onPin) {
-                Label("Pin", systemImage: "pin")
-            }
-            .tint(.yellow)
-            Button(action: onComplete) {
-                Label("Complete", systemImage: "checkmark.circle")
-            }
-            .tint(.green)
-            Button(action: onSecondary) {
-                Label("Secondary", systemImage: "plus.rectangle.on.rectangle")
-            }
-            .tint(.indigo)
-        }
     }
 }
 
