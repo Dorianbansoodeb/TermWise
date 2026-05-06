@@ -5,6 +5,7 @@ struct ProfilePanelView: View {
 
     @State private var savingsSlider: Double = 0
     @State private var selectedMonth: MonthlySummary?
+    @State private var weeklyNoteDraft: String = ""
 
     private let supportedCurrencies = ["USD", "CAD", "EUR", "GBP"]
 
@@ -21,6 +22,10 @@ struct ProfilePanelView: View {
 
             goalsSection
 
+            billsSection
+
+            weeklyNotesSection
+
             recalculateSection
 
             currencySection
@@ -30,6 +35,7 @@ struct ProfilePanelView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onAppear {
             savingsSlider = appState.desiredSavingsRate
+            weeklyNoteDraft = appState.currentWeekNote
         }
         .sheet(item: $selectedMonth) { month in
             MonthDetailPopup(month: month)
@@ -140,6 +146,15 @@ struct ProfilePanelView: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
             }
+
+            VStack(alignment: .leading) {
+                Text("Bonus income (optional)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("0", value: $appState.bonusIncomeForMonth, format: .number)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+            }
         }
     }
 
@@ -172,6 +187,53 @@ struct ProfilePanelView: View {
                 appState.recalculateEstimatedBudget()
             }
             .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private var billsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Bill Due Dates")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            ForEach($appState.billReminders) { $bill in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(bill.title)
+                            .fontWeight(.semibold)
+                        Text("Expected \(bill.expectedAmount.formatted(appState.currencyFormatter))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Stepper("Due \(bill.dueDay)", value: $bill.dueDay, in: 1...28)
+                        .labelsHidden()
+                    Text("Due \(bill.dueDay)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Reminder: Pay credit card bill on time.")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private var weeklyNotesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("End-of-Week Note")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            TextEditor(text: $weeklyNoteDraft)
+                .frame(minHeight: 90)
+                .padding(8)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            Button("Save week note") {
+                appState.updateWeekNote(weeklyNoteDraft)
+            }
+            .buttonStyle(.bordered)
         }
     }
 }
@@ -235,18 +297,12 @@ private struct MonthDetailPopup: View {
 
     private var monthlyIncomeBreakdown: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Income Breakdown")
+            Text("Monthly Budget")
                 .font(.headline)
             HStack {
-                Text("Expected income")
+                Text("Budget for month")
                 Spacer()
-                Text(appState.monthlyIncome.formatted(appState.currencyFormatter))
-                    .fontWeight(.semibold)
-            }
-            HStack {
-                Text("Actual income (estimated)")
-                Spacer()
-                Text((month.actual + month.saved).formatted(appState.currencyFormatter))
+                Text(month.planned.formatted(appState.currencyFormatter))
                     .fontWeight(.semibold)
             }
         }

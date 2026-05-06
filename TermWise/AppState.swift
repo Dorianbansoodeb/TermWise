@@ -66,6 +66,13 @@ struct OnboardingData: Codable {
     var monthlySpendingBudget: Double
 }
 
+struct BillReminder: Identifiable, Codable {
+    let id: UUID
+    var title: String
+    var dueDay: Int
+    var expectedAmount: Double
+}
+
 final class AppState: ObservableObject {
     private static let storageKey = "termwise.appState.v1"
     private var cancellables = Set<AnyCancellable>()
@@ -79,6 +86,7 @@ final class AppState: ObservableObject {
     @Published var monthlySpendingBudget: Double = 1480
     @Published var manualMonthlyLimit: Double? = nil
     @Published var desiredSavingsRate: Double = 15 // percent of income the student wants to save
+    @Published var bonusIncomeForMonth: Double = 0
 
     // Currency
     @Published var currencyCode: String = "USD"
@@ -94,6 +102,12 @@ final class AppState: ObservableObject {
     ]
 
     @Published var transactions: [TransactionItem] = AppState.seededMayTransactions()
+    @Published var billReminders: [BillReminder] = [
+        .init(id: UUID(), title: "Rent", dueDay: 1, expectedAmount: 900),
+        .init(id: UUID(), title: "Phone Bill", dueDay: 12, expectedAmount: 65),
+        .init(id: UUID(), title: "Credit Card Bill", dueDay: 14, expectedAmount: 220)
+    ]
+    @Published var weeklyNotes: [String: String] = [:]
 
     // Simple local history for charts in profile panel
     @Published var monthlyHistory: [MonthlySummary] = [
@@ -148,7 +162,7 @@ final class AppState: ObservableObject {
     }
 
     var expectedTotalSaved: Double {
-        max(0, effectiveMonthlyLimit - totalNetSpend)
+        max(0, effectiveMonthlyLimit - totalNetSpend + bonusIncomeForMonth)
     }
 
     var availableSavedToUse: Double {
@@ -169,6 +183,35 @@ final class AppState: ObservableObject {
 
     var expectedDailySpend: Double {
         effectiveMonthlyLimit / Double(max(1, daysInCurrentMonth))
+    }
+
+    var currentWeekKey: String {
+        let calendar = Calendar.current
+        let week = calendar.component(.weekOfYear, from: Date())
+        let year = calendar.component(.yearForWeekOfYear, from: Date())
+        return "\(year)-W\(week)"
+    }
+
+    var currentWeekNote: String {
+        weeklyNotes[currentWeekKey] ?? ""
+    }
+
+    var upcomingUrgentBills: [BillReminder] {
+        let calendar = Calendar.current
+        let now = Date()
+        return billReminders.filter { bill in
+            guard let dueDate = calendar.date(
+                from: DateComponents(
+                    year: calendar.component(.year, from: now),
+                    month: calendar.component(.month, from: now),
+                    day: min(28, max(1, bill.dueDay))
+                )
+            ) else {
+                return false
+            }
+            let dayDelta = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: dueDate).day ?? 99
+            return dayDelta >= 0 && dayDelta <= 2
+        }
     }
 
     var awarenessMessages: [String] {
@@ -213,6 +256,14 @@ final class AppState: ObservableObject {
             savedApplied: savedApplied
         )
         transactions.insert(item, at: 0)
+    }
+
+    func deleteTransaction(id: UUID) {
+        transactions.removeAll { $0.id == id }
+    }
+
+    func updateWeekNote(_ note: String) {
+        weeklyNotes[currentWeekKey] = note
     }
 
     func shouldPromptIrregularPurchase(amount: Double) -> Bool {
@@ -307,7 +358,10 @@ final class AppState: ObservableObject {
             ),
             manualMonthlyLimit: manualMonthlyLimit,
             desiredSavingsRate: desiredSavingsRate,
+            bonusIncomeForMonth: bonusIncomeForMonth,
             currencyCode: currencyCode,
+            billReminders: billReminders,
+            weeklyNotes: weeklyNotes,
             budgetItems: budgetItems,
             transactions: transactions
         )
@@ -331,7 +385,10 @@ final class AppState: ObservableObject {
             monthlySpendingBudget = decoded.onboarding.monthlySpendingBudget
             manualMonthlyLimit = decoded.manualMonthlyLimit
             desiredSavingsRate = decoded.desiredSavingsRate
+            bonusIncomeForMonth = decoded.bonusIncomeForMonth
             currencyCode = decoded.currencyCode
+            billReminders = decoded.billReminders
+            weeklyNotes = decoded.weeklyNotes
             budgetItems = decoded.budgetItems
             transactions = decoded.transactions
         } catch {
@@ -344,7 +401,10 @@ private struct PersistedState: Codable {
     let onboarding: OnboardingData
     let manualMonthlyLimit: Double?
     let desiredSavingsRate: Double
+    let bonusIncomeForMonth: Double
     let currencyCode: String
+    let billReminders: [BillReminder]
+    let weeklyNotes: [String: String]
     let budgetItems: [BudgetItem]
     let transactions: [TransactionItem]
 }

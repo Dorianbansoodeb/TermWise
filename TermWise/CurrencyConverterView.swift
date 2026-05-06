@@ -38,9 +38,9 @@ struct CurrencyConverterView: View {
                         let converted = convert(amount: amount, from: fromCode, to: toCode)
                         let rate = exchangeRate(from: fromCode, to: toCode)
                         HStack {
-                            Text("\(amount, format: .number) \(fromCode)")
+                            Text("\(amount, format: .number.precision(.fractionLength(2))) \(fromCode)")
                             Spacer()
-                            Text("\(converted, format: .number) \(toCode)")
+                            Text("\(converted, format: .number.precision(.fractionLength(2))) \(toCode)")
                                 .fontWeight(.semibold)
                         }
 

@@ -5,6 +5,11 @@ struct TransactionsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var filter: TransactionFilter = .all
     @State private var searchText: String = ""
+    @State private var archivedIds: Set<UUID> = []
+    @State private var pinnedIds: Set<UUID> = []
+    @State private var completedIds: Set<UUID> = []
+    @State private var markedIds: Set<UUID> = []
+    @State private var moreActionsTarget: TransactionItem?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -62,6 +67,16 @@ struct TransactionsView: View {
                                             .font(.caption)
                                             .foregroundStyle(.blue)
                                     }
+                                    if pinnedIds.contains(transaction.id) {
+                                        Text("Pinned")
+                                            .font(.caption2)
+                                            .foregroundStyle(.yellow)
+                                    }
+                                    if completedIds.contains(transaction.id) {
+                                        Text("Completed")
+                                            .font(.caption2)
+                                            .foregroundStyle(.green)
+                                    }
                                 }
 
                                 Spacer()
@@ -71,6 +86,58 @@ struct TransactionsView: View {
                                     .foregroundStyle(transaction.type == .expense ? .red : .green)
                             }
                             .padding(.vertical, 4)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    appState.deleteTransaction(id: transaction.id)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                Button {
+                                    archivedIds.insert(transaction.id)
+                                } label: {
+                                    Label("Archive", systemImage: "archivebox")
+                                }
+                                .tint(.gray)
+                                Button {
+                                    moreActionsTarget = transaction
+                                } label: {
+                                    Label("More", systemImage: "ellipsis")
+                                }
+                                .tint(.blue)
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button {
+                                    if markedIds.contains(transaction.id) { markedIds.remove(transaction.id) } else { markedIds.insert(transaction.id) }
+                                } label: {
+                                    Label("Mark", systemImage: "flag")
+                                }
+                                .tint(.orange)
+                                Button {
+                                    if pinnedIds.contains(transaction.id) { pinnedIds.remove(transaction.id) } else { pinnedIds.insert(transaction.id) }
+                                } label: {
+                                    Label("Pin", systemImage: "pin")
+                                }
+                                .tint(.yellow)
+                                Button {
+                                    if completedIds.contains(transaction.id) { completedIds.remove(transaction.id) } else { completedIds.insert(transaction.id) }
+                                } label: {
+                                    Label("Complete", systemImage: "checkmark.circle")
+                                }
+                                .tint(.green)
+                                Button {
+                                    if transaction.type == .expense {
+                                        appState.addTransaction(
+                                            amount: transaction.amount,
+                                            category: transaction.category,
+                                            note: "Duplicate: \(transaction.note)",
+                                            type: .expense
+                                        )
+                                    }
+                                } label: {
+                                    Label("Secondary", systemImage: "plus.rectangle.on.rectangle")
+                                }
+                                .tint(.indigo)
+                            }
                         }
                     }
                 }
@@ -83,6 +150,18 @@ struct TransactionsView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 AppOverflowMenu()
             }
+        }
+        .confirmationDialog("More Actions", item: $moreActionsTarget) { item in
+            Button("Duplicate transaction") {
+                appState.addTransaction(
+                    amount: item.amount,
+                    category: item.category,
+                    note: "Duplicate: \(item.note)",
+                    type: item.type,
+                    savedApplied: item.savedApplied
+                )
+            }
+            Button("Cancel", role: .cancel) {}
         }
     }
 
@@ -97,10 +176,12 @@ struct TransactionsView: View {
             filteredByType = appState.transactions.filter { $0.type == .income }
         }
 
+        let withoutArchived = filteredByType.filter { !archivedIds.contains($0.id) }
+
         if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return filteredByType
+            return withoutArchived
         }
-        return filteredByType.filter {
+        return withoutArchived.filter {
             $0.category.localizedCaseInsensitiveContains(searchText) ||
             $0.note.localizedCaseInsensitiveContains(searchText)
         }

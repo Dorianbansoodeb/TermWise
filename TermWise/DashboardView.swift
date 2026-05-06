@@ -22,6 +22,10 @@ struct DashboardView: View {
 
     private var mainContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if !appState.upcomingUrgentBills.isEmpty {
+                urgentBillsCard
+            }
+
             Text("Good morning, \(appState.userFirstName)")
                 .font(.title2)
                 .fontWeight(.semibold)
@@ -213,6 +217,22 @@ struct DashboardView: View {
             infoChip(text: "You're under budget by \((appState.totalPlannedSpend - appState.totalActualSpend).formatted(appState.currencyFormatter)) this month")
             infoChip(text: "Eating out is at \(eatingOutPercent)% with 19 days left")
         }
+    }
+
+    private var urgentBillsCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Urgent")
+                .font(.headline)
+            ForEach(appState.upcomingUrgentBills) { bill in
+                Text("Pay \(bill.title) in <= 2 days (\(bill.expectedAmount.formatted(appState.currencyFormatter))).")
+                    .font(.subheadline)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.red.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var recentTransactionsCard: some View {
