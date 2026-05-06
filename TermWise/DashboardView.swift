@@ -5,6 +5,8 @@ struct DashboardView: View {
     @State private var recentlyRemovedTransaction: TransactionItem?
     @State private var completedIds: Set<UUID> = []
     @State private var markedIds: Set<UUID> = []
+    @State private var showSavedHistory = false
+    @State private var savedHistoryMode: SavedHistoryMode = .cumulative
 
     let onQuickAddExpense: () -> Void
     let onQuickAddIncome: () -> Void
@@ -39,6 +41,13 @@ struct DashboardView: View {
                 .padding(.vertical, 10)
                 .background(.thinMaterial)
             }
+        }
+        .sheet(isPresented: $showSavedHistory) {
+            SavedHistorySheet(
+                mode: $savedHistoryMode,
+                points: appState.savedHistoryTimeline()
+            )
+            .environmentObject(appState)
         }
     }
 
@@ -103,19 +112,27 @@ struct DashboardView: View {
     }
 
     private var expectedSavedCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Total Saved")
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.85))
-            Text(appState.expectedTotalSaved.formatted(appState.currencyFormatter))
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-            Text("Budget \(appState.effectiveMonthlyLimit.formatted(appState.currencyFormatter)) • Net spend \(appState.totalNetSpend.formatted(appState.currencyFormatter))")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.85))
+        Button {
+            showSavedHistory = true
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Total Saved by Using the App")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.9))
+                Text(appState.expectedTotalSaved.formatted(appState.currencyFormatter))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("Cumulative saved pool you can use when a month goes over budget.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.9))
+                Text("Tap to view monthly and cumulative history")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(.plain)
         .background(
             LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
         )
@@ -433,6 +450,149 @@ struct DashboardView: View {
 
     private func onArchive(_ id: UUID) {
         _ = appState.removeTransaction(id: id)
+    }
+}
+
+private enum SavedHistoryMode: String, CaseIterable, Identifiable {
+    case cumulative
+    case monthly
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .cumulative: return "Cumulative"
+        case .monthly: return "Monthly"
+        }
+    }
+}
+
+private struct SavedHistorySheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Binding var mode: SavedHistoryMode
+    let points: [SavedHistoryPoint]
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 14) {
+                Picker("View", selection: $mode) {
+                    ForEach(SavedHistoryMode.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                SavedHistoryChart(mode: mode, points: points)
+                    .frame(height: 220)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(mode == .cumulative ? "Cumulative total by month" : "Saved amount each month")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    ForEach(points.suffix(6)) { point in
+                        HStack {
+                            Text(point.monthLabel)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(value(for: point).formatted(appState.currencyFormatter))
+                                .foregroundStyle(value(for: point) >= 0 ? .green : .red)
+                                .fontWeight(.semibold)
+                        }
+                        .font(.caption)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding()
+            .navigationTitle("Saved Over Time")
+        }
+    }
+
+    private func value(for point: SavedHistoryPoint) -> Double {
+        mode == .cumulative ? point.cumulativeSaved : point.monthlySaved
+    }
+}
+
+private struct SavedHistoryChart: View {
+    @EnvironmentObject private var appState: AppState
+    let mode: SavedHistoryMode
+    let points: [SavedHistoryPoint]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let values = points.map { mode == .cumulative ? $0.cumulativeSaved : $0.monthlySaved }
+            let maxAbsValue = max(1, values.map { abs($0) }.max() ?? 1)
+            let midY = height / 2
+            let stepX = width / CGFloat(max(1, points.count - 1))
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.08))
+
+                Path { path in
+                    path.move(to: CGPoint(x: 0, y: midY))
+                    path.addLine(to: CGPoint(x: width, y: midY))
+                }
+                .stroke(Color.gray.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+
+                if mode == .cumulative {
+                    Path { path in
+                        guard !values.isEmpty else { return }
+                        let firstY = yPosition(for: values[0], height: height, maxAbsValue: maxAbsValue)
+                        path.move(to: CGPoint(x: 0, y: firstY))
+                        for (index, value) in values.enumerated().dropFirst() {
+                            path.addLine(to: CGPoint(x: CGFloat(index) * stepX, y: yPosition(for: value, height: height, maxAbsValue: maxAbsValue)))
+                        }
+                    }
+                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                } else {
+                    HStack(alignment: .center, spacing: 0) {
+                        ForEach(Array(values.enumerated()), id: \.offset) { index, value in
+                            let barHeight = CGFloat(abs(value) / maxAbsValue) * (height * 0.42)
+                            VStack(spacing: 0) {
+                                Spacer(minLength: 0)
+                                if value >= 0 {
+                                    Rectangle()
+                                        .fill(Color.green.opacity(0.8))
+                                        .frame(width: max(8, stepX * 0.45), height: barHeight)
+                                    Color.clear.frame(height: height * 0.5 - barHeight)
+                                } else {
+                                    Color.clear.frame(height: height * 0.5)
+                                    Rectangle()
+                                        .fill(Color.red.opacity(0.8))
+                                        .frame(width: max(8, stepX * 0.45), height: barHeight)
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                            .frame(width: index == points.count - 1 ? max(8, stepX * 0.6) : stepX)
+                        }
+                    }
+                }
+
+                VStack {
+                    Spacer()
+                    HStack(spacing: 0) {
+                        ForEach(points) { point in
+                            Text(point.monthLabel)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 4)
+                }
+            }
+        }
+    }
+
+    private func yPosition(for value: Double, height: CGFloat, maxAbsValue: Double) -> CGFloat {
+        let center = height / 2
+        let scale = (height * 0.42) / CGFloat(maxAbsValue)
+        return center - CGFloat(value) * scale
     }
 }
 

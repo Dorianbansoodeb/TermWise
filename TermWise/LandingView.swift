@@ -62,7 +62,12 @@ struct LandingView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .padding(.horizontal)
-                .padding(.bottom, 24)
+
+                Text(appVersionLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                    .padding(.bottom, 24)
             }
         }
     }
@@ -126,6 +131,12 @@ struct LandingView: View {
         .padding()
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var appVersionLabel: String {
+        let shortVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "Version \(shortVersion) (\(buildNumber))"
     }
 }
 

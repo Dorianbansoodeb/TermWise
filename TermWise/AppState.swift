@@ -140,7 +140,7 @@ final class AppState: ObservableObject {
         .init(id: UUID(), category: "Groceries", planned: 280, dueDay: nil, dueRule: nil),
         .init(id: UUID(), category: "Transportation", planned: 120, dueDay: nil, dueRule: nil),
         .init(id: UUID(), category: "Eating Out", planned: 140, dueDay: nil, dueRule: nil),
-        .init(id: UUID(), category: "Tuition/Savings", planned: 300, dueDay: 20, dueRule: .monthlyDay)
+        .init(id: UUID(), category: "Tuition/Savings", planned: 300, dueDay: 7, dueRule: .monthlyDay)
     ]
 
     @Published var transactions: [TransactionItem] = AppState.seededMayTransactions()
@@ -208,6 +208,10 @@ final class AppState: ObservableObject {
         effectiveMonthlyLimit - projectedEndOfMonthSpend
     }
 
+    var currentMonthSaved: Double {
+        effectiveMonthlyLimit - totalNetSpend + bonusIncomeForMonth
+    }
+
     var monthlySavingsTargetFromBudget: Double {
         effectiveMonthlyLimit * (desiredSavingsRate / 100)
     }
@@ -217,11 +221,46 @@ final class AppState: ObservableObject {
     }
 
     var expectedTotalSaved: Double {
-        max(0, effectiveMonthlyLimit - totalActualSpend + bonusIncomeForMonth - totalSavedApplied)
+        max(0, savedHistoryTimeline().last?.cumulativeSaved ?? 0)
     }
 
     var availableSavedToUse: Double {
         expectedTotalSaved
+    }
+
+    func savedHistoryTimeline() -> [SavedHistoryPoint] {
+        var points: [SavedHistoryPoint] = []
+        var cumulative = 0.0
+
+        for summary in monthlyHistory {
+            cumulative += summary.saved
+            points.append(
+                SavedHistoryPoint(
+                    id: summary.id.uuidString,
+                    monthLabel: summary.monthLabel,
+                    monthlySaved: summary.saved,
+                    cumulativeSaved: cumulative
+                )
+            )
+        }
+
+        let monthIndex = max(0, min(11, Calendar.current.component(.month, from: Date()) - 1))
+        let currentMonthLabel = Calendar.current.shortMonthSymbols[monthIndex]
+        let hasCurrentMonth = points.contains { $0.monthLabel == currentMonthLabel }
+        if !hasCurrentMonth {
+            let monthSaved = currentMonthSaved
+            cumulative += monthSaved
+            points.append(
+                SavedHistoryPoint(
+                    id: "\(currentMonthKey)-current",
+                    monthLabel: currentMonthLabel,
+                    monthlySaved: monthSaved,
+                    cumulativeSaved: cumulative
+                )
+            )
+        }
+
+        return points
     }
 
     var currencyFormatter: FloatingPointFormatStyle<Double>.Currency {
@@ -635,6 +674,13 @@ struct MonthlySummary: Identifiable, Codable {
     let saved: Double
 
     var isOver: Bool { saved < 0 }
+}
+
+struct SavedHistoryPoint: Identifiable {
+    let id: String
+    let monthLabel: String
+    let monthlySaved: Double
+    let cumulativeSaved: Double
 }
 
 private extension AppState {
