@@ -98,7 +98,7 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -181,7 +181,7 @@ struct DashboardView: View {
             }
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -236,7 +236,7 @@ struct DashboardView: View {
             }
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -294,6 +294,9 @@ struct DashboardView: View {
                         Text(item.note.isEmpty ? "No note" : item.note)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Text(item.date.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Text("\(item.type == .expense ? "-" : "+")\(item.amount.formatted(appState.currencyFormatter))")
@@ -344,7 +347,7 @@ struct DashboardView: View {
             }
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 

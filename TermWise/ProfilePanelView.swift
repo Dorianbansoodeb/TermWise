@@ -33,6 +33,7 @@ struct ProfilePanelView: View {
             .padding(12)
         }
         .background(Color(.systemGroupedBackground))
+        .scrollDismissesKeyboard(.interactively)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onAppear {
             selectedSavingsOption = SavingsRateOption.closest(to: appState.desiredSavingsRate)

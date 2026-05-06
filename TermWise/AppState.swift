@@ -57,6 +57,47 @@ struct BudgetItem: Identifiable, Codable {
     let category: String
     var planned: Double
     var dueDay: Int?
+    var dueRule: DueDateRule?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, category, planned, dueDay, dueRule
+    }
+
+    init(id: UUID, category: String, planned: Double, dueDay: Int?, dueRule: DueDateRule?) {
+        self.id = id
+        self.category = category
+        self.planned = planned
+        self.dueDay = dueDay
+        self.dueRule = dueRule
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        category = try container.decode(String.self, forKey: .category)
+        planned = try container.decode(Double.self, forKey: .planned)
+        dueDay = try container.decodeIfPresent(Int.self, forKey: .dueDay)
+        dueRule = try container.decodeIfPresent(DueDateRule.self, forKey: .dueRule)
+        if dueRule == nil, dueDay != nil {
+            dueRule = .monthlyDay
+        }
+    }
+}
+
+enum DueDateRule: String, Codable, CaseIterable, Identifiable {
+    case monthlyDay
+    case endOfMonth
+    case biweekly
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .monthlyDay: return "Monthly"
+        case .endOfMonth: return "End of month"
+        case .biweekly: return "Biweekly"
+        }
+    }
 }
 
 struct OnboardingData: Codable {
@@ -95,11 +136,11 @@ final class AppState: ObservableObject {
     @Published var draftTransactionType: TransactionType = .expense
 
     @Published var budgetItems: [BudgetItem] = [
-        .init(id: UUID(), category: "Rent", planned: 900, dueDay: 1),
-        .init(id: UUID(), category: "Groceries", planned: 280, dueDay: nil),
-        .init(id: UUID(), category: "Transportation", planned: 120, dueDay: nil),
-        .init(id: UUID(), category: "Eating Out", planned: 140, dueDay: nil),
-        .init(id: UUID(), category: "Tuition/Savings", planned: 300, dueDay: 20)
+        .init(id: UUID(), category: "Rent", planned: 900, dueDay: 1, dueRule: .monthlyDay),
+        .init(id: UUID(), category: "Groceries", planned: 280, dueDay: nil, dueRule: nil),
+        .init(id: UUID(), category: "Transportation", planned: 120, dueDay: nil, dueRule: nil),
+        .init(id: UUID(), category: "Eating Out", planned: 140, dueDay: nil, dueRule: nil),
+        .init(id: UUID(), category: "Tuition/Savings", planned: 300, dueDay: 20, dueRule: .monthlyDay)
     ]
 
     @Published var transactions: [TransactionItem] = AppState.seededMayTransactions()
@@ -225,20 +266,16 @@ final class AppState: ObservableObject {
         let calendar = Calendar.current
         let now = Date()
         let derivedBills = budgetItems.compactMap { item -> BillReminder? in
-            guard let dueDay = item.dueDay else { return nil }
-            return BillReminder(id: item.id, title: item.category, dueDay: dueDay, expectedAmount: item.planned)
+            guard let rule = item.dueRule else { return nil }
+            let day = item.dueDay ?? 1
+            return BillReminder(id: item.id, title: item.category, dueDay: day, expectedAmount: item.planned)
         }
         return derivedBills.filter { bill in
-            guard let dueDate = calendar.date(
-                from: DateComponents(
-                    year: calendar.component(.year, from: now),
-                    month: calendar.component(.month, from: now),
-                    day: min(28, max(1, bill.dueDay))
-                )
-            ) else {
-                return false
-            }
-            let dayDelta = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: dueDate).day ?? 99
+            guard
+                let item = budgetItems.first(where: { $0.id == bill.id }),
+                let rule = item.dueRule,
+                let dayDelta = daysUntilDue(rule: rule, dueDay: item.dueDay, now: now, calendar: calendar)
+            else { return false }
             return dayDelta >= 0 && dayDelta <= 2
         }
     }
@@ -303,7 +340,7 @@ final class AppState: ObservableObject {
         transactions.insert(transaction, at: 0)
     }
 
-    func addBudgetCategory(name: String, planned: Double, dueDay: Int?) {
+    func addBudgetCategory(name: String, planned: Double, dueDay: Int?, dueRule: DueDateRule?) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, planned >= 0 else { return }
         budgetItems.append(
@@ -311,9 +348,51 @@ final class AppState: ObservableObject {
                 id: UUID(),
                 category: trimmed,
                 planned: planned,
-                dueDay: dueDay
+                dueDay: dueDay,
+                dueRule: dueRule
             )
         )
+    }
+
+    private func daysUntilDue(rule: DueDateRule, dueDay: Int?, now: Date, calendar: Calendar) -> Int? {
+        let startToday = calendar.startOfDay(for: now)
+        switch rule {
+        case .monthlyDay:
+            guard let dueDay else { return nil }
+            guard let dueDate = calendar.date(
+                from: DateComponents(
+                    year: calendar.component(.year, from: now),
+                    month: calendar.component(.month, from: now),
+                    day: min(28, max(1, dueDay))
+                )
+            ) else { return nil }
+            return calendar.dateComponents([.day], from: startToday, to: dueDate).day
+        case .endOfMonth:
+            guard let monthRange = calendar.range(of: .day, in: .month, for: now) else { return nil }
+            let lastDay = monthRange.count
+            guard let dueDate = calendar.date(
+                from: DateComponents(
+                    year: calendar.component(.year, from: now),
+                    month: calendar.component(.month, from: now),
+                    day: lastDay
+                )
+            ) else { return nil }
+            return calendar.dateComponents([.day], from: startToday, to: dueDate).day
+        case .biweekly:
+            let anchorDay = min(28, max(1, dueDay ?? 1))
+            guard var nextDue = calendar.date(
+                from: DateComponents(
+                    year: calendar.component(.year, from: now),
+                    month: calendar.component(.month, from: now),
+                    day: anchorDay
+                )
+            ) else { return nil }
+            while nextDue < startToday {
+                guard let shifted = calendar.date(byAdding: .day, value: 14, to: nextDue) else { break }
+                nextDue = shifted
+            }
+            return calendar.dateComponents([.day], from: startToday, to: nextDue).day
+        }
     }
 
     func updateWeekNote(_ note: String) {

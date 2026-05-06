@@ -9,6 +9,7 @@ struct BudgetPlanView: View {
     @State private var newCategoryAmount: String = ""
     @State private var newCategoryHasDueDate = false
     @State private var newCategoryDueDay: Int = 1
+    @State private var newCategoryDueRule: DueDateRule = .monthlyDay
 
     var body: some View {
         ScrollView {
@@ -25,6 +26,7 @@ struct BudgetPlanView: View {
             .padding()
         }
         .background(Color(.systemGroupedBackground))
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Budget Plan")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -79,7 +81,7 @@ struct BudgetPlanView: View {
             metricRow("Delta", appState.totalPlannedSpend - appState.totalBudgetCountedSpend, emphasize: true)
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
@@ -95,7 +97,7 @@ struct BudgetPlanView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
@@ -134,19 +136,30 @@ struct BudgetPlanView: View {
                 }
             }
 
-            if let dueDay = item.wrappedValue.dueDay {
+            if let dueRule = item.wrappedValue.dueRule {
                 HStack {
                     Text("Due date")
                         .foregroundStyle(.secondary)
                     Spacer()
                     if isEditing {
-                        Stepper("Due \(dueDay)", value: Binding(
-                            get: { item.wrappedValue.dueDay ?? 1 },
-                            set: { item.wrappedValue.dueDay = $0 }
-                        ), in: 1...28)
-                        .labelsHidden()
+                        Picker("Rule", selection: Binding(
+                            get: { item.wrappedValue.dueRule ?? .monthlyDay },
+                            set: { item.wrappedValue.dueRule = $0 }
+                        )) {
+                            ForEach(DueDateRule.allCases) { rule in
+                                Text(rule.label).tag(rule)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        if (item.wrappedValue.dueRule ?? .monthlyDay) != .endOfMonth {
+                            Stepper("Due \(item.wrappedValue.dueDay ?? 1)", value: Binding(
+                                get: { item.wrappedValue.dueDay ?? 1 },
+                                set: { item.wrappedValue.dueDay = $0 }
+                            ), in: 1...28)
+                            .labelsHidden()
+                        }
                     }
-                    Text("Day \(dueDay)")
+                    Text(dueDateSubtitle(rule: dueRule, day: item.wrappedValue.dueDay))
                         .font(.subheadline)
                 }
             }
@@ -171,7 +184,7 @@ struct BudgetPlanView: View {
             }
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
@@ -205,26 +218,36 @@ struct BudgetPlanView: View {
             Toggle("Add monthly due date", isOn: $newCategoryHasDueDate)
 
             if newCategoryHasDueDate {
-                Stepper("Due day: \(newCategoryDueDay)", value: $newCategoryDueDay, in: 1...28)
-                    .font(.subheadline)
+                Picker("Due schedule", selection: $newCategoryDueRule) {
+                    ForEach(DueDateRule.allCases) { rule in
+                        Text(rule.label).tag(rule)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if newCategoryDueRule != .endOfMonth {
+                    Stepper("Due day: \(newCategoryDueDay)", value: $newCategoryDueDay, in: 1...28)
+                        .font(.subheadline)
+                }
             }
 
             Button("Add Category") {
                 appState.addBudgetCategory(
                     name: newCategoryName,
                     planned: Double(newCategoryAmount) ?? 0,
-                    dueDay: newCategoryHasDueDate ? newCategoryDueDay : nil
+                    dueDay: newCategoryHasDueDate && newCategoryDueRule != .endOfMonth ? newCategoryDueDay : nil,
+                    dueRule: newCategoryHasDueDate ? newCategoryDueRule : nil
                 )
                 newCategoryName = ""
                 newCategoryAmount = ""
                 newCategoryHasDueDate = false
                 newCategoryDueDay = 1
+                newCategoryDueRule = .monthlyDay
             }
             .buttonStyle(.borderedProminent)
             .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Double(newCategoryAmount) ?? -1) < 0)
         }
         .padding()
-        .background(.white)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
@@ -236,6 +259,17 @@ struct BudgetPlanView: View {
         } else {
             editingCategoryIds.insert(id)
             focusedCategoryId = id
+        }
+    }
+
+    private func dueDateSubtitle(rule: DueDateRule, day: Int?) -> String {
+        switch rule {
+        case .monthlyDay:
+            return "Monthly • Day \(day ?? 1)"
+        case .endOfMonth:
+            return "End of month"
+        case .biweekly:
+            return "Biweekly • Day \(day ?? 1)"
         }
     }
 }

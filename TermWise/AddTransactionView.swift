@@ -32,7 +32,7 @@ struct AddTransactionView: View {
                         .focused($isAmountFocused)
                         .font(.system(size: 42, weight: .bold, design: .rounded))
                         .padding()
-                        .background(.white)
+                        .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
                 }
@@ -61,7 +61,7 @@ struct AddTransactionView: View {
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
                                     .frame(maxWidth: .infinity)
-                                    .background(category == option ? Color.blue.opacity(0.2) : Color.white)
+                                    .background(category == option ? Color.blue.opacity(0.2) : Color(.secondarySystemBackground))
                                     .overlay(
                                         Capsule()
                                             .stroke(category == option ? Color.blue.opacity(0.5) : Color.gray.opacity(0.2), lineWidth: 1)
@@ -88,6 +88,7 @@ struct AddTransactionView: View {
             .padding()
         }
         .background(Color(.systemGroupedBackground))
+        .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) {
             Button("Save Transaction") {
                 let resolvedCategory = resolveCategory()

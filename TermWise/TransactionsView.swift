@@ -53,6 +53,7 @@ struct TransactionsView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Transactions")
@@ -257,6 +258,9 @@ private struct TransactionListRow: View {
                 .fontWeight(.semibold)
             Text(transaction.note.isEmpty ? "No note" : transaction.note)
                 .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text(transaction.date.formatted(date: .abbreviated, time: .shortened))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
             if transaction.type == .expense && transaction.savedApplied > 0 {
                 Text("Used \(transaction.savedApplied.formatted(appState.currencyFormatter)) from saved")
