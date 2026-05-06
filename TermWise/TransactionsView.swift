@@ -62,7 +62,16 @@ struct TransactionsView: View {
                 AppOverflowMenu()
             }
         }
-        .confirmationDialog("More Actions", item: $moreActionsTarget) { item in
+        .confirmationDialog(
+            "More Actions",
+            isPresented: Binding(
+                get: { moreActionsTarget != nil },
+                set: { isPresented in
+                    if !isPresented { moreActionsTarget = nil }
+                }
+            ),
+            presenting: moreActionsTarget
+        ) { item in
             Button("Duplicate transaction") {
                 appState.addTransaction(
                     amount: item.amount,
