@@ -160,8 +160,7 @@ final class AppState: ObservableObject {
     }
 
     var projectedSavingsThisMonth: Double {
-        let targetSavingsAmount = monthlyIncome * (desiredSavingsRate / 100)
-        return max(0, targetSavingsAmount - max(0, totalActualSpend - effectiveMonthlyLimit))
+        effectiveMonthlyLimit - projectedEndOfMonthSpend
     }
 
     var expectedTotalSaved: Double {
