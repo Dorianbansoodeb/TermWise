@@ -3,9 +3,10 @@ import SwiftUI
 struct ProfilePanelView: View {
     @EnvironmentObject private var appState: AppState
 
-    @State private var savingsSlider: Double = 0
+    @State private var customSavingsRateText: String = ""
+    @State private var selectedSavingsOption: SavingsRateOption = .fifteen
     @State private var selectedMonth: MonthlySummary?
-    @State private var weeklyNoteDraft: String = ""
+    @State private var monthlyNoteDraft: String = ""
 
     private let supportedCurrencies = ["USD", "CAD", "EUR", "GBP"]
 
@@ -34,8 +35,11 @@ struct ProfilePanelView: View {
         .background(Color(.systemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onAppear {
-            savingsSlider = appState.desiredSavingsRate
-            weeklyNoteDraft = appState.currentWeekNote
+            selectedSavingsOption = SavingsRateOption.closest(to: appState.desiredSavingsRate)
+            if selectedSavingsOption == .other {
+                customSavingsRateText = String(Int(appState.desiredSavingsRate))
+            }
+            monthlyNoteDraft = appState.currentMonthNote
         }
         .sheet(item: $selectedMonth) { month in
             MonthDetailPopup(month: month)
@@ -92,12 +96,12 @@ struct ProfilePanelView: View {
 
     private var goalsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Goals")
+            Text("Budget Goals")
                 .font(.subheadline)
                 .fontWeight(.semibold)
 
             VStack(alignment: .leading) {
-                Text("Monthly limit override")
+                Text("Budget for month")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
@@ -118,30 +122,30 @@ struct ProfilePanelView: View {
             }
 
             VStack(alignment: .leading) {
-                Text("Desired savings from spending")
+                Text("How much do you want to save from budget?")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                HStack {
-                    Slider(value: $savingsSlider, in: 0...50, step: 1) {
-                        Text("Savings")
-                    } minimumValueLabel: {
-                        Text("0%")
-                            .font(.caption2)
-                    } maximumValueLabel: {
-                        Text("50%")
-                            .font(.caption2)
+                Picker("Savings target", selection: $selectedSavingsOption) {
+                    ForEach(SavingsRateOption.allCases) { option in
+                        Text(option.label).tag(option)
                     }
-                    .onChange(of: savingsSlider) {
-                        appState.desiredSavingsRate = savingsSlider
-                    }
-                    Text("\(Int(savingsSlider))%")
-                        .font(.caption)
-                        .frame(width: 36, alignment: .trailing)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: selectedSavingsOption) {
+                    applySavingsSelection()
+                }
+                if selectedSavingsOption == .other {
+                    TextField("Custom %", text: $customSavingsRateText)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: customSavingsRateText) {
+                            applySavingsSelection()
+                        }
                 }
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Projected monthly savings")
+                Text("You'll save this month")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(appState.projectedSavingsThisMonth.formatted(appState.currencyFormatter))
@@ -194,18 +198,37 @@ struct ProfilePanelView: View {
 
     private var weeklyNotesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("End-of-Week Note")
+            Text("Monthly Note")
                 .font(.subheadline)
                 .fontWeight(.semibold)
-            TextEditor(text: $weeklyNoteDraft)
+            TextEditor(text: $monthlyNoteDraft)
                 .frame(minHeight: 90)
                 .padding(8)
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-            Button("Save week note") {
-                appState.updateWeekNote(weeklyNoteDraft)
+            Button("Save monthly note") {
+                appState.updateMonthlyNote(monthlyNoteDraft, forMonthLabel: currentMonthLabel)
             }
             .buttonStyle(.bordered)
+        }
+    }
+
+    private var currentMonthLabel: String {
+        let month = Calendar.current.component(.month, from: Date())
+        let symbols = Calendar.current.shortMonthSymbols
+        return symbols[max(0, min(symbols.count - 1, month - 1))]
+    }
+
+    private func applySavingsSelection() {
+        switch selectedSavingsOption {
+        case .ten:
+            appState.desiredSavingsRate = 10
+        case .fifteen:
+            appState.desiredSavingsRate = 15
+        case .twenty:
+            appState.desiredSavingsRate = 20
+        case .other:
+            appState.desiredSavingsRate = min(90, max(0, Double(customSavingsRateText) ?? appState.desiredSavingsRate))
         }
     }
 }
@@ -213,6 +236,7 @@ struct ProfilePanelView: View {
 private struct MonthDetailPopup: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @State private var noteDraft: String = ""
 
     let month: MonthlySummary
 
@@ -250,11 +274,15 @@ private struct MonthDetailPopup: View {
 
                 monthlyIncomeBreakdown
                 monthlyExpenseBreakdown
+                monthNoteSection
 
                 Spacer()
             }
             .padding()
             .background(Color(.systemGroupedBackground))
+            .onAppear {
+                noteDraft = appState.monthlyNote(forMonthLabel: month.monthLabel)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
@@ -303,6 +331,25 @@ private struct MonthDetailPopup: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
+    private var monthNoteSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Monthly Note")
+                .font(.headline)
+            TextEditor(text: $noteDraft)
+                .frame(minHeight: 90)
+                .padding(8)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            Button("Save note") {
+                appState.updateMonthlyNote(noteDraft, forMonthLabel: month.monthLabel)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
     private var expenseBreakdownItems: [(category: String, expected: Double, actual: Double)] {
         let totalExpectedTemplate = max(1, appState.budgetItems.reduce(0) { $0 + $1.planned })
         let ratio = month.actual / max(1, month.planned)
@@ -324,6 +371,31 @@ private struct MonthDetailPopup: View {
             ProgressView(value: value, total: max(month.actual, month.planned, 1))
                 .tint(color)
         }
+    }
+}
+
+private enum SavingsRateOption: String, CaseIterable, Identifiable {
+    case ten
+    case fifteen
+    case twenty
+    case other
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .ten: return "10%"
+        case .fifteen: return "15%"
+        case .twenty: return "20%"
+        case .other: return "Other"
+        }
+    }
+
+    static func closest(to value: Double) -> SavingsRateOption {
+        if abs(value - 10) < 0.5 { return .ten }
+        if abs(value - 15) < 0.5 { return .fifteen }
+        if abs(value - 20) < 0.5 { return .twenty }
+        return .other
     }
 }
 

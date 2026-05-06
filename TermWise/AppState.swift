@@ -110,6 +110,7 @@ final class AppState: ObservableObject {
     ]
     @Published var weeklyNotes: [String: String] = [:]
     @Published var pinnedTransactionIds: Set<UUID> = []
+    @Published var monthlyNotes: [String: String] = [:]
 
     // Simple local history for charts in profile panel
     @Published var monthlyHistory: [MonthlySummary] = [
@@ -196,6 +197,17 @@ final class AppState: ObservableObject {
 
     var currentWeekNote: String {
         weeklyNotes[currentWeekKey] ?? ""
+    }
+
+    var currentMonthKey: String {
+        let calendar = Calendar.current
+        let month = calendar.component(.month, from: Date())
+        let year = calendar.component(.year, from: Date())
+        return "\(year)-\(month)"
+    }
+
+    var currentMonthNote: String {
+        monthlyNotes[currentMonthKey] ?? ""
     }
 
     var upcomingUrgentBills: [BillReminder] {
@@ -297,6 +309,30 @@ final class AppState: ObservableObject {
         weeklyNotes[currentWeekKey] = note
     }
 
+    func monthKey(for date: Date) -> String {
+        let calendar = Calendar.current
+        let month = calendar.component(.month, from: date)
+        let year = calendar.component(.year, from: date)
+        return "\(year)-\(month)"
+    }
+
+    func monthKey(forMonthLabel monthLabel: String) -> String {
+        let symbols = Calendar.current.shortMonthSymbols
+        if let monthIndex = symbols.firstIndex(where: { $0.localizedCaseInsensitiveCompare(monthLabel) == .orderedSame }) {
+            let year = Calendar.current.component(.year, from: Date())
+            return "\(year)-\(monthIndex + 1)"
+        }
+        return currentMonthKey
+    }
+
+    func monthlyNote(forMonthLabel monthLabel: String) -> String {
+        monthlyNotes[monthKey(forMonthLabel: monthLabel)] ?? ""
+    }
+
+    func updateMonthlyNote(_ note: String, forMonthLabel monthLabel: String) {
+        monthlyNotes[monthKey(forMonthLabel: monthLabel)] = note
+    }
+
     func shouldPromptIrregularPurchase(amount: Double) -> Bool {
         guard amount > 0 else { return false }
         let expenseTransactions = transactions.filter { $0.type == .expense }
@@ -394,6 +430,7 @@ final class AppState: ObservableObject {
             billReminders: billReminders,
             weeklyNotes: weeklyNotes,
             pinnedTransactionIds: pinnedTransactionIds,
+            monthlyNotes: monthlyNotes,
             budgetItems: budgetItems,
             transactions: transactions
         )
@@ -422,6 +459,7 @@ final class AppState: ObservableObject {
             billReminders = decoded.billReminders
             weeklyNotes = decoded.weeklyNotes
             pinnedTransactionIds = decoded.pinnedTransactionIds
+            monthlyNotes = decoded.monthlyNotes
             budgetItems = decoded.budgetItems
             transactions = decoded.transactions
         } catch {
@@ -439,6 +477,7 @@ private struct PersistedState: Codable {
     let billReminders: [BillReminder]
     let weeklyNotes: [String: String]
     let pinnedTransactionIds: Set<UUID>
+    let monthlyNotes: [String: String]
     let budgetItems: [BudgetItem]
     let transactions: [TransactionItem]
 
@@ -451,6 +490,7 @@ private struct PersistedState: Codable {
         case billReminders
         case weeklyNotes
         case pinnedTransactionIds
+        case monthlyNotes
         case budgetItems
         case transactions
     }
@@ -464,6 +504,7 @@ private struct PersistedState: Codable {
         billReminders: [BillReminder],
         weeklyNotes: [String: String],
         pinnedTransactionIds: Set<UUID>,
+        monthlyNotes: [String: String],
         budgetItems: [BudgetItem],
         transactions: [TransactionItem]
     ) {
@@ -475,6 +516,7 @@ private struct PersistedState: Codable {
         self.billReminders = billReminders
         self.weeklyNotes = weeklyNotes
         self.pinnedTransactionIds = pinnedTransactionIds
+        self.monthlyNotes = monthlyNotes
         self.budgetItems = budgetItems
         self.transactions = transactions
     }
@@ -489,6 +531,7 @@ private struct PersistedState: Codable {
         billReminders = try container.decode([BillReminder].self, forKey: .billReminders)
         weeklyNotes = try container.decode([String: String].self, forKey: .weeklyNotes)
         pinnedTransactionIds = try container.decodeIfPresent(Set<UUID>.self, forKey: .pinnedTransactionIds) ?? []
+        monthlyNotes = try container.decodeIfPresent([String: String].self, forKey: .monthlyNotes) ?? [:]
         budgetItems = try container.decode([BudgetItem].self, forKey: .budgetItems)
         transactions = try container.decode([TransactionItem].self, forKey: .transactions)
     }

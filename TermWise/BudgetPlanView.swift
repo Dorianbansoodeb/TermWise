@@ -119,11 +119,15 @@ struct BudgetPlanView: View {
             HStack {
                 Text("Planned")
                 Spacer()
-                TextField("0", value: item.planned, format: .number)
-                    .multilineTextAlignment(.trailing)
-                    .keyboardType(.decimalPad)
-                    .focused($focusedCategoryId, equals: item.wrappedValue.id)
-                    .disabled(!isEditing)
+                if isEditing {
+                    TextField("0", value: item.planned, format: .number)
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.decimalPad)
+                        .focused($focusedCategoryId, equals: item.wrappedValue.id)
+                } else {
+                    Text(item.wrappedValue.planned.formatted(appState.currencyFormatter))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if let dueDay = item.wrappedValue.dueDay {

@@ -3,6 +3,8 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
     @State private var recentlyRemovedTransaction: TransactionItem?
+    @State private var completedIds: Set<UUID> = []
+    @State private var markedIds: Set<UUID> = []
 
     let onQuickAddExpense: () -> Void
     let onQuickAddIncome: () -> Void
@@ -101,13 +103,13 @@ struct DashboardView: View {
 
     private var expectedSavedCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Main Balance")
+            Text("Total Saved")
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.85))
             Text(appState.expectedTotalSaved.formatted(appState.currencyFormatter))
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
-            Text("Income \(appState.monthlyIncome.formatted(appState.currencyFormatter)) • Spend \(appState.totalActualSpend.formatted(appState.currencyFormatter))")
+            Text("Budget \(appState.effectiveMonthlyLimit.formatted(appState.currencyFormatter)) • Net spend \(appState.totalNetSpend.formatted(appState.currencyFormatter))")
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.85))
         }
@@ -236,8 +238,8 @@ struct DashboardView: View {
             Text("Insights")
                 .font(.headline)
             infoChip(
-                text: "You’re \(budgetDelta >= 0 ? "under" : "over") budget by \(abs(budgetDelta).formatted(appState.currencyFormatter)) this month",
-                tone: budgetDelta >= 0 ? .green : .red
+                text: savingsProjectionMessage,
+                tone: appState.projectedSavingsThisMonth >= 0 ? .green : .red
             )
             infoChip(text: "Eating out is at \(eatingOutPercent)% with \(remainingDaysInMonth) days left", tone: .orange)
             if let awareness = appState.awarenessMessages.first {
@@ -299,6 +301,39 @@ struct DashboardView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.vertical, 4)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        recentlyRemovedTransaction = appState.removeTransaction(id: item.id)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    Button {
+                        onArchive(item.id)
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
+                    }
+                    .tint(.gray)
+                }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                    Button {
+                        toggle(&markedIds, item.id)
+                    } label: {
+                        Label("Mark", systemImage: "flag")
+                    }
+                    .tint(.orange)
+                    Button {
+                        toggle(&appState.pinnedTransactionIds, item.id)
+                    } label: {
+                        Label("Pin", systemImage: "pin")
+                    }
+                    .tint(.yellow)
+                    Button {
+                        toggle(&completedIds, item.id)
+                    } label: {
+                        Label("Complete", systemImage: "checkmark.circle")
+                    }
+                    .tint(.green)
+                }
             }
         }
         .padding()
@@ -363,6 +398,14 @@ struct DashboardView: View {
         appState.userFirstName.isEmpty ? "Piere" : appState.userFirstName
     }
 
+    private var savingsProjectionMessage: String {
+        let projection = appState.projectedSavingsThisMonth
+        if projection >= 0 {
+            return "You’re on track to save \(projection.formatted(appState.currencyFormatter)) by month-end."
+        }
+        return "At this pace, you may miss your savings target by \(abs(projection).formatted(appState.currencyFormatter))."
+    }
+
     private var recentTransactions: [TransactionItem] {
         appState.transactions.sorted { lhs, rhs in
             let leftPinned = appState.pinnedTransactionIds.contains(lhs.id)
@@ -372,6 +415,14 @@ struct DashboardView: View {
             }
             return lhs.date > rhs.date
         }
+    }
+
+    private func toggle(_ set: inout Set<UUID>, _ id: UUID) {
+        if set.contains(id) { set.remove(id) } else { set.insert(id) }
+    }
+
+    private func onArchive(_ id: UUID) {
+        _ = appState.removeTransaction(id: id)
     }
 }
 

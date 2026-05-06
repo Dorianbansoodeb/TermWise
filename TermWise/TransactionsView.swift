@@ -9,6 +9,7 @@ struct TransactionsView: View {
     @State private var completedIds: Set<UUID> = []
     @State private var markedIds: Set<UUID> = []
     @State private var moreActionsTarget: TransactionItem?
+    @State private var recentlyRemovedTransaction: TransactionItem?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -82,6 +83,24 @@ struct TransactionsView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .safeAreaInset(edge: .bottom) {
+            if let removed = recentlyRemovedTransaction {
+                HStack {
+                    Text("Removed \(removed.category)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Undo") {
+                        appState.restoreTransaction(removed)
+                        recentlyRemovedTransaction = nil
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .background(.thinMaterial)
+            }
+        }
     }
 
     private var filteredTransactions: [TransactionItem] {
@@ -146,7 +165,8 @@ struct TransactionsView: View {
             onPin: { togglePinned(id) },
             onComplete: { toggleCompleted(id) },
             onMark: { toggleMarked(id) },
-            onMore: { moreActionsTarget = transaction }
+            onMore: { moreActionsTarget = transaction },
+            onDelete: { recentlyRemovedTransaction = appState.removeTransaction(id: id) }
         )
         .environmentObject(appState)
     }
@@ -175,6 +195,7 @@ private struct TransactionListRow: View {
     let onComplete: () -> Void
     let onMark: () -> Void
     let onMore: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -188,9 +209,7 @@ private struct TransactionListRow: View {
         }
         .padding(.vertical, 4)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                appState.deleteTransaction(id: transaction.id)
-            } label: {
+            Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
             }
             Button(action: onArchive) {
