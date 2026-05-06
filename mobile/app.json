@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Student Finance Planner",
+    "slug": "student-finance-planner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": ["**/*"]
+  }
+}
