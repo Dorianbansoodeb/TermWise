@@ -151,13 +151,6 @@ struct ProfilePanelView: View {
                 Text(monthlyBudgetSavingsTarget.formatted(appState.currencyFormatter))
                     .font(.subheadline)
                     .fontWeight(.semibold)
-
-                Text("You'll save this month")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(monthEndSavingsForecast.formatted(appState.currencyFormatter))
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
             }
 
             VStack(alignment: .leading) {
@@ -241,10 +234,6 @@ struct ProfilePanelView: View {
 
     private var monthlyBudgetSavingsTarget: Double {
         appState.effectiveMonthlyLimit * (appState.desiredSavingsRate / 100)
-    }
-
-    private var monthEndSavingsForecast: Double {
-        appState.effectiveMonthlyLimit - appState.projectedEndOfMonthSpend
     }
 }
 

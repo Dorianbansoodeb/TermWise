@@ -163,6 +163,14 @@ final class AppState: ObservableObject {
         effectiveMonthlyLimit - projectedEndOfMonthSpend
     }
 
+    var monthlySavingsTargetFromBudget: Double {
+        effectiveMonthlyLimit * (desiredSavingsRate / 100)
+    }
+
+    var spendingGoalLimit: Double {
+        max(0, effectiveMonthlyLimit - monthlySavingsTargetFromBudget)
+    }
+
     var expectedTotalSaved: Double {
         max(0, effectiveMonthlyLimit - totalNetSpend + bonusIncomeForMonth)
     }

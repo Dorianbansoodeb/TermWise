@@ -88,7 +88,8 @@ struct DashboardView: View {
                 daysInMonth: appState.daysInCurrentMonth,
                 projectedEndValue: appState.projectedEndOfMonthSpend,
                 projectedColor: predictedOver ? .red : .green,
-                limit: appState.effectiveMonthlyLimit
+                limit: appState.effectiveMonthlyLimit,
+                goalLimit: appState.spendingGoalLimit
             )
             .frame(height: 150)
 
@@ -435,16 +436,18 @@ private struct LineTrendChartView: View {
     let projectedEndValue: Double
     let projectedColor: Color
     let limit: Double
+    let goalLimit: Double
     @State private var selectedDayIndex: Int? = nil
 
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
-            let dataMax = max(1, (dailyActualCumulative + [projectedEndValue, limit]).max() ?? 1)
+            let dataMax = max(1, (dailyActualCumulative + [projectedEndValue, limit, goalLimit]).max() ?? 1)
             // Add headroom so the limit line is visually around mid-chart.
             let maxY = max(dataMax * 1.6, limit * 2.0)
             let yLimit = height - (CGFloat(limit) / CGFloat(maxY) * height)
+            let yGoal = height - (CGFloat(goalLimit) / CGFloat(maxY) * height)
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.gray.opacity(0.08))
@@ -497,6 +500,24 @@ private struct LineTrendChartView: View {
                         .background(Color.white.opacity(0.85))
                         .clipShape(Capsule())
                         .position(x: min(width - 70, max(60, width * 0.72)), y: max(12, yLimit - 10))
+                }
+
+                if goalLimit > 0 {
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: yGoal))
+                        path.addLine(to: CGPoint(x: width, y: yGoal))
+                    }
+                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+
+                    Text("Goal \(goalLimit.formatted(appState.currencyFormatter))")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.85))
+                        .clipShape(Capsule())
+                        .position(x: min(width - 65, max(55, width * 0.52)), y: max(12, yGoal - 10))
                 }
 
                 // Day markers for readability
