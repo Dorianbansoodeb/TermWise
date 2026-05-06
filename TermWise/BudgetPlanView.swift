@@ -71,8 +71,12 @@ struct BudgetPlanView: View {
             Text("Monthly Snapshot")
                 .font(.headline)
             metricRow("Planned Total", appState.totalPlannedSpend)
-            metricRow("Actual Spend", appState.totalActualSpend)
-            metricRow("Delta", appState.totalPlannedSpend - appState.totalActualSpend, emphasize: true)
+            metricRow("Actual Spend (Budget Counted)", appState.totalBudgetCountedSpend)
+            if appState.totalSavedApplied > 0 {
+                metricRow("Used from Saved", appState.totalSavedApplied)
+                metricRow("Gross Spent", appState.totalActualSpend)
+            }
+            metricRow("Delta", appState.totalPlannedSpend - appState.totalBudgetCountedSpend, emphasize: true)
         }
         .padding()
         .background(.white)

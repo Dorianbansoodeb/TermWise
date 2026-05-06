@@ -125,7 +125,7 @@ struct DashboardView: View {
 
     private func monthlyExpenseBarCard() -> some View {
         let limit = max(1, appState.effectiveMonthlyLimit)
-        let totalSpent = appState.totalActualSpend
+        let totalSpent = appState.totalBudgetCountedSpend
         let cappedSpent = min(totalSpent, limit)
         let overflow = max(0, totalSpent - limit)
 
@@ -173,6 +173,12 @@ struct DashboardView: View {
                         .foregroundStyle(.red)
                 }
             }
+
+            if appState.totalSavedApplied > 0 {
+                Text("Gross spent this month: \(appState.totalActualSpend.formatted(appState.currencyFormatter)) • Used from saved: \(appState.totalSavedApplied.formatted(appState.currencyFormatter))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding()
         .background(.white)
@@ -196,7 +202,7 @@ struct DashboardView: View {
     }
 
     private var spendingProgressCard: some View {
-        let progress = min(1.0, appState.totalActualSpend / max(1, appState.effectiveMonthlyLimit))
+        let progress = min(1.0, appState.totalBudgetCountedSpend / max(1, appState.effectiveMonthlyLimit))
         return VStack(alignment: .leading, spacing: 12) {
             Text("Spending Progress")
                 .font(.headline)

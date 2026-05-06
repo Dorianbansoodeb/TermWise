@@ -145,6 +145,10 @@ final class AppState: ObservableObject {
         max(0, totalActualSpend - totalSavedApplied)
     }
 
+    var totalBudgetCountedSpend: Double {
+        totalNetSpend
+    }
+
     var totalActualIncome: Double {
         transactions
             .filter { $0.type == .income }
@@ -261,7 +265,7 @@ final class AppState: ObservableObject {
     func actualAmount(for category: String) -> Double {
         transactions
             .filter { $0.type == .expense && $0.category.localizedCaseInsensitiveContains(category.replacingOccurrences(of: "/Savings", with: "")) }
-            .reduce(0) { $0 + $1.amount }
+            .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
     }
 
     func addTransaction(
