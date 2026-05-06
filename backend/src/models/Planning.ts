@@ -51,6 +51,16 @@ const savingsGoalSchema = new Schema(
   { _id: false }
 );
 
+const settingsSchema = new Schema(
+  {
+    userFirstName: { type: String, default: 'Student' },
+    currencyCode: { type: String, default: 'USD' },
+    manualMonthlyLimit: { type: Number, default: null },
+    desiredSavingsRate: { type: Number, default: 15 }
+  },
+  { _id: false }
+);
+
 const planningSchema = new Schema(
   {
     userId: { type: Types.ObjectId, ref: 'User', required: true, unique: true },
@@ -58,7 +68,8 @@ const planningSchema = new Schema(
     expenseCategories: { type: [budgetCategorySchema], default: [] },
     tuitionPayments: { type: [tuitionPaymentSchema], default: [] },
     fundingSources: { type: [fundingSourceSchema], default: [] },
-    savingsGoals: { type: [savingsGoalSchema], default: [] }
+    savingsGoals: { type: [savingsGoalSchema], default: [] },
+    settings: { type: settingsSchema, default: () => ({}) }
   },
   { timestamps: true }
 );

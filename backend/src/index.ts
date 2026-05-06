@@ -7,6 +7,8 @@ import profileRoutes from './routes/profile';
 import planningRoutes from './routes/planning';
 import transactionRoutes from './routes/transactions';
 import dashboardRoutes from './routes/dashboard';
+import settingsRoutes from './routes/settings';
+import analyticsRoutes from './routes/analytics';
 import { requireAuth } from './middleware/auth';
 
 const app = express();
@@ -23,6 +25,8 @@ app.use('/profile', requireAuth, profileRoutes);
 app.use('/planning', requireAuth, planningRoutes);
 app.use('/transactions', requireAuth, transactionRoutes);
 app.use('/dashboard', requireAuth, dashboardRoutes);
+app.use('/settings', requireAuth, settingsRoutes);
+app.use('/analytics', requireAuth, analyticsRoutes);
 
 const bootstrap = async () => {
   await connectDb();
