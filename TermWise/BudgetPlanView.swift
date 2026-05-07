@@ -9,6 +9,7 @@ struct BudgetPlanView: View {
         ScrollView {
             VStack(spacing: 14) {
                 budgetEnvelopeCard
+                savingsTargetCard
                 monthlySnapshotCard
 
                 if !fixedItemIndices.isEmpty {
@@ -75,37 +76,80 @@ struct BudgetPlanView: View {
 
     // MARK: - Cards
 
+    /// Budget Envelope card — explains how the user's income is split between the budget envelope
+    /// they chose to plan with this month and the income they're keeping in reserve.
+    ///
+    /// Source-of-truth rule (drives every row except Total Income):
+    /// - **Total Income** is *informational only*. It never drives budget calculations.
+    /// - **Available to Budget** is the editable, user-controlled source of truth. All other rows
+    ///   (Reserve / Not Budgeted, Savings Target, Total Budgeted, Unallocated / Over Budget) are
+    ///   derived from it.
+    ///
+    /// Rows (in order):
+    /// 1. Total Income          (informational — caption says so)
+    /// 2. Available to Budget   (editable)
+    /// 3. Reserve / Not Budgeted = Total Income − Available to Budget (clamped at 0)
+    /// 4. Savings Target        = mirrors the Savings Target card (rate or custom)
+    /// 5. Total Budgeted        = sum of all non-hidden planned allocations + Savings Target
+    /// 6. Unallocated Budget OR Over Budget By
     private var budgetEnvelopeCard: some View {
         let unallocated = FinanceBudgetAllocation.unallocatedRow(
             availableToBudget: appState.availableToBudget,
             totalBudgeted: appState.totalBudgeted
         )
-        return VStack(alignment: .leading, spacing: 10) {
+        let isOverIncome = appState.availableToBudget > appState.totalIncome && appState.totalIncome > 0
+
+        return VStack(alignment: .leading, spacing: 12) {
             Text("Budget Envelope")
                 .font(.headline)
 
-            metricRow("Total Income", appState.totalIncome)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Available to Budget This Month")
+            // 1. Total Income — informational only. The value is rendered in `.secondary` so it
+            //    doesn't read as "the budget amount", and the caption below states it explicitly.
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("Total Income")
+                    Spacer()
+                    Text(appState.totalIncome.formatted(appState.currencyFormatter))
+                        .foregroundStyle(.secondary)
+                }
+                Text("Informational only — does not control your budget.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField(
-                    "Amount",
-                    value: Binding(
-                        get: { appState.availableToBudget },
-                        set: { appState.setAvailableToBudgetForCurrentMonth($0) }
-                    ),
-                    format: .number
-                )
-                .keyboardType(.decimalPad)
-                .textFieldStyle(.roundedBorder)
             }
 
-            if appState.reserveNotBudgeted > 0 {
-                metricRow("Reserve / Not Budgeted", appState.reserveNotBudgeted)
+            // 2. Available to Budget — editable, with the new spec-mandated helper text below.
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Available to Budget")
+                    Spacer()
+                    TextField(
+                        "Amount",
+                        value: Binding(
+                            get: { appState.availableToBudget },
+                            set: { appState.setAvailableToBudgetForCurrentMonth($0) }
+                        ),
+                        format: .number
+                    )
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 140)
+                }
+                Text("Your budget is based on Available to Budget, not your full income.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+
+            // 3. Reserve / Not Budgeted (always shown, even when 0).
+            metricRow("Reserve / Not Budgeted", appState.reserveNotBudgeted)
+
+            // 4. Savings Target — read-only mirror of the Savings Target card below.
+            metricRow("Savings Target", appState.savingsTargetThisMonth)
+
+            // 5. Total Budgeted (planned allocations + savings target — never income, never spending).
             metricRow("Total Budgeted", appState.totalBudgeted)
+
+            // 6. Unallocated Budget OR Over Budget By
             metricRow(
                 unallocated.label,
                 unallocated.value,
@@ -113,20 +157,17 @@ struct BudgetPlanView: View {
                 forceColor: unallocated.isOver ? .red : .green
             )
 
-            if appState.availableToBudget > appState.totalIncome && appState.totalIncome > 0 {
+            // Inline warning when the user budgets more than they actually earned.
+            if isOverIncome {
                 Text("You are budgeting more than your recorded income.")
                     .font(.caption)
                     .foregroundStyle(.red)
             }
-            if unallocated.isOver {
-                Text("Your budget is over your available amount by \(unallocated.value.formatted(appState.currencyFormatter)).")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            } else if unallocated.value > 0 {
-                Text("You have \(unallocated.value.formatted(appState.currencyFormatter)) left unallocated.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+
+            // Small explanation footer reinforcing the Income vs Available distinction.
+            Text("Income is what you receive. Available to Budget is what you choose to plan with.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding()
         .background(Color(.secondarySystemBackground))
@@ -134,21 +175,84 @@ struct BudgetPlanView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 
+    /// Savings Target card — controls how much of *Available to Budget* the user plans to set
+    /// aside this month. The chosen amount flows directly into `appState.savingsTargetThisMonth`,
+    /// which counts toward `totalBudgeted` and the Monthly Snapshot's planned bucket.
+    ///
+    /// Behavior:
+    /// - 10% / 15% / 20%: sets `desiredSavingsRate` and clears any custom dollar override.
+    /// - Other: persists a per-month dollar override via `setCustomSavingsTargetForCurrentMonth`.
+    private var savingsTargetCard: some View {
+        SavingsTargetCard()
+            .environmentObject(appState)
+    }
+
+    /// Monthly Snapshot card — compares the planned budget against the user's actual spending
+    /// for the **current calendar month only**, and surfaces a quick variable / recurring split.
+    ///
+    /// Rows (in order):
+    /// 1. Planned Budget          = sum of non-hidden item.planned + savings target
+    /// 2. Actual Spending         = current-month net expenses from transactions
+    /// 3. Savings Target          = the envelope-level savings number chosen on the Savings Target card
+    /// 4. Remaining Budget OR Over Spent (signed: positive = remaining, negative = over)
+    /// 5. Variable Spending Used  = "$spent / $planned" for variable items only
+    /// 6. Recurring Bills Paid    = "X of Y paid" for `.fixed` items only
     private var monthlySnapshotCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let snapshot = appState.monthlySnapshot
+        let variableUsedColor: Color = snapshot.isVariableOverPlanned ? .red : .green
+        let recurringColor: Color = snapshot.allRecurringBillsPaid ? .green : .secondary
+        let formatter = appState.currencyFormatter
+
+        return VStack(alignment: .leading, spacing: 12) {
             Text("Monthly Snapshot")
                 .font(.headline)
-            metricRow("Total Budgeted", appState.totalBudgeted)
-            metricRow("Actual Spend", appState.totalBudgetCountedSpend)
-            if appState.totalSavedApplied > 0 {
-                metricRow("Used from Cushion", appState.totalSavedApplied)
-                metricRow("Gross Spent", appState.totalActualSpend)
-            }
+
+            // 1. Planned Budget
+            metricRow("Planned Budget", snapshot.plannedBudget)
+
+            // 2. Actual Spending
+            metricRow("Actual Spending", snapshot.actualSpending)
+
+            // 3. Savings Target — read-only mirror of the Savings Target card.
+            metricRow("Savings Target", snapshot.savingsTarget)
+
+            // 4. Remaining Budget OR Over Spent
             metricRow(
-                "Delta",
-                appState.totalBudgeted - appState.totalBudgetCountedSpend,
-                emphasize: true
+                snapshot.isOverSpent ? "Over Spent" : "Remaining Budget",
+                abs(snapshot.remaining),
+                emphasize: true,
+                forceColor: snapshot.isOverSpent ? .red : .green
             )
+
+            // 5. Variable Spending Used  ($spent / $planned, "—" when no variable items)
+            HStack {
+                Text("Variable Spending Used")
+                Spacer()
+                if snapshot.variablePlanned > 0 {
+                    Text("\(snapshot.variableSpent.formatted(formatter)) / \(snapshot.variablePlanned.formatted(formatter))")
+                        .foregroundStyle(variableUsedColor)
+                        .fontWeight(.semibold)
+                } else {
+                    Text("—").foregroundStyle(.secondary)
+                }
+            }
+
+            // 6. Recurring Bills Paid  ("X of Y paid", "—" when none scheduled)
+            HStack {
+                Text("Recurring Bills Paid")
+                Spacer()
+                if snapshot.recurringBillsTotal > 0 {
+                    Text("\(snapshot.recurringBillsPaid) of \(snapshot.recurringBillsTotal) paid")
+                        .foregroundStyle(recurringColor)
+                        .fontWeight(.semibold)
+                } else {
+                    Text("—").foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Snapshot compares your planned budget against what you actually spent this month.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding()
         .background(Color(.secondarySystemBackground))
@@ -694,6 +798,153 @@ private struct BudgetItemEditorSheet: View {
         let symbols = Calendar.current.weekdaySymbols
         let index = max(0, min(symbols.count - 1, weekday - 1))
         return symbols[index]
+    }
+}
+
+// MARK: - Savings Target card
+
+/// Inline savings-rate selector that lives on the Budget Plan screen (replaces the old "Budget
+/// Goals" section that used to live on the Profile tab). Selecting 10/15/20% updates
+/// `appState.desiredSavingsRate` and clears any custom override; selecting **Other** lets the user
+/// type a custom dollar amount that is persisted per month via `customSavingsTargetByMonth`.
+private struct SavingsTargetCard: View {
+    @EnvironmentObject private var appState: AppState
+
+    @State private var selectedOption: SavingsRateOption = .fifteen
+    @State private var customAmountText: String = ""
+    @State private var didLoadInitialValues = false
+
+    private enum SavingsRateOption: String, CaseIterable, Identifiable {
+        case ten, fifteen, twenty, other
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .ten: return "10%"
+            case .fifteen: return "15%"
+            case .twenty: return "20%"
+            case .other: return "Other"
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Savings Target")
+                .font(.headline)
+
+            // Available to Budget — read-only mirror so the user can see what the percentage acts on.
+            HStack {
+                Text("Available to Budget")
+                Spacer()
+                Text(appState.availableToBudget.formatted(appState.currencyFormatter))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("How much would you like to save from your budget?")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Picker("Target savings rate", selection: $selectedOption) {
+                ForEach(SavingsRateOption.allCases) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: selectedOption) {
+                applySelection()
+            }
+
+            if selectedOption == .other {
+                HStack {
+                    Text("Custom amount")
+                    Spacer()
+                    TextField("Amount", text: $customAmountText)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 140)
+                        .onChange(of: customAmountText) {
+                            applyCustomAmount()
+                        }
+                }
+            }
+
+            // Resolved savings target — what actually flows into Total Budgeted.
+            HStack {
+                Text("Savings Target")
+                    .fontWeight(.semibold)
+                Spacer()
+                Text(appState.savingsTargetThisMonth.formatted(appState.currencyFormatter))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.green)
+            }
+
+            if selectedOption != .other {
+                Text("Savings Target = Available to Budget × \(Int(appState.desiredSavingsRate))%.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Custom savings amount counts toward Total Budgeted for this month.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+        .onAppear { loadInitialValuesIfNeeded() }
+    }
+
+    private func loadInitialValuesIfNeeded() {
+        guard !didLoadInitialValues else { return }
+        didLoadInitialValues = true
+
+        if let custom = appState.customSavingsTargetByMonth[appState.currentMonthKey] {
+            selectedOption = .other
+            customAmountText = formatAmount(custom)
+        } else {
+            selectedOption = closestStandardRate(to: appState.desiredSavingsRate)
+        }
+    }
+
+    private func applySelection() {
+        switch selectedOption {
+        case .ten:
+            appState.setSavingsRate(10)
+        case .fifteen:
+            appState.setSavingsRate(15)
+        case .twenty:
+            appState.setSavingsRate(20)
+        case .other:
+            // Seed the custom field with the current rate-derived amount so the value is sensible.
+            if appState.customSavingsTargetByMonth[appState.currentMonthKey] == nil {
+                let seeded = appState.availableToBudget * (appState.desiredSavingsRate / 100)
+                customAmountText = formatAmount(seeded)
+                appState.setCustomSavingsTargetForCurrentMonth(seeded)
+            }
+        }
+    }
+
+    private func applyCustomAmount() {
+        guard selectedOption == .other else { return }
+        let parsed = Double(customAmountText) ?? 0
+        appState.setCustomSavingsTargetForCurrentMonth(parsed)
+    }
+
+    private func closestStandardRate(to value: Double) -> SavingsRateOption {
+        if abs(value - 10) < 0.5 { return .ten }
+        if abs(value - 20) < 0.5 { return .twenty }
+        // Default and "anything else" both fall to 15% — there's no Other option without a custom override.
+        return .fifteen
+    }
+
+    private func formatAmount(_ amount: Double) -> String {
+        if amount.rounded() == amount {
+            return String(Int(amount))
+        }
+        return String(format: "%g", amount)
     }
 }
 

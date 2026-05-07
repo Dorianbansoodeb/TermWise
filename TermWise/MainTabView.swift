@@ -112,7 +112,7 @@ struct MainTabView: View {
             ),
             presenting: appState.pendingIncomePrompt
         ) { _ in
-            Button("Add to Budget") {
+            Button("Add to Available Budget") {
                 appState.confirmAddIncomeToBudget()
             }
             Button("Keep as Reserve") {
@@ -128,7 +128,7 @@ struct MainTabView: View {
 
     private func incomePromptMessage(_ prompt: PendingIncomePrompt) -> String {
         let amount = prompt.amount.formatted(appState.currencyFormatter)
-        return "Add this \(amount) (\(prompt.categoryName)) to your Available to Budget? Choose Keep as Reserve to leave your budget unchanged."
+        return "Add \(amount) (\(prompt.categoryName)) to your Available to Budget? Choose Keep as Reserve to leave your budget unchanged."
     }
 
     private var bottomNavRow: some View {

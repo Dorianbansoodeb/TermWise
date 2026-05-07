@@ -45,6 +45,9 @@ final class AppState: ObservableObject {
     @Published var monthlyNotes: [String: String] = [:]
     @Published var hiddenBudgetItemIdsByMonth: [String: Set<UUID>] = [:]
     @Published var availableToBudgetByMonth: [String: Double] = [:]
+    /// Per calendar month, dollar override for the *Savings Target* card. When set, replaces the
+    /// rate-derived target for that month (i.e. user picked **Other** and entered a custom amount).
+    @Published var customSavingsTargetByMonth: [String: Double] = [:]
     @Published var fixedBillActualOverridesByMonth: [String: [UUID: Double]] = [:]
     @Published var fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]] = [:]
     @Published var pendingUndo: PendingUndoBar?
@@ -72,11 +75,23 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Sum of planned amounts for categories active this month (not hidden). Fixed, variable, and savings lines all count.
+    /// `recurringBillsPlanned + variableSpendingLimits + savingsGoals + savingsTargetThisMonth`.
+    /// Sum of planned allocations for non-hidden items plus the envelope-level Savings Target.
     var totalBudgeted: Double {
         FinanceBudgetAllocation.calculateTotalBudgeted(
             budgetItems: budgetItems,
-            hiddenBudgetItemIds: hiddenBudgetItemIdsByMonth[currentMonthKey] ?? []
+            hiddenBudgetItemIds: hiddenBudgetItemIdsByMonth[currentMonthKey] ?? [],
+            savingsTarget: savingsTargetThisMonth
+        )
+    }
+
+    /// Resolved Savings Target dollar amount for the current month.
+    /// Custom override (user picked **Other**) wins; otherwise `availableToBudget * (desiredSavingsRate / 100)`.
+    var savingsTargetThisMonth: Double {
+        FinanceCalculator.savingsTarget(
+            availableToBudget: availableToBudget,
+            rate: desiredSavingsRate,
+            customAmount: customSavingsTargetByMonth[currentMonthKey]
         )
     }
 
@@ -126,6 +141,18 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// Category-by-category breakdown powering the Plan vs Reality bar + its tap-to-expand
+    /// legend on the Dashboard. Only this month's *expense* transactions count; the envelope is
+    /// always `availableToBudget` (never the legacy `effectiveMonthlyLimit`).
+    var spendingBreakdown: FinanceCalculator.SpendingBreakdown {
+        FinanceCalculator.spendingBreakdown(
+            transactions: transactions,
+            availableToBudget: availableToBudget,
+            now: Date(),
+            calendar: Calendar.current
+        )
+    }
+
     /// Money preserved this month by spending less than the planned envelope. Capped at 0.
     var budgetCushion: Double {
         FinanceBudgetAllocation.calculateBudgetCushionThisMonth(
@@ -134,8 +161,40 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// Month-scoped rollup powering the Budget screen's *Monthly Snapshot* card. Pure logic lives
+    /// in `FinanceCalculator.monthlySnapshot(...)`. Includes the envelope-level Savings Target so
+    /// the snapshot's `plannedBudget` stays in lockstep with `totalBudgeted`.
+    var monthlySnapshot: FinanceCalculator.MonthlySnapshot {
+        FinanceCalculator.monthlySnapshot(
+            budgetItems: budgetItems,
+            transactions: transactions,
+            hiddenBudgetItemIds: hiddenBudgetItemIdsByMonth[currentMonthKey] ?? [],
+            savingsTarget: savingsTargetThisMonth,
+            now: Date(),
+            calendar: Calendar.current
+        )
+    }
+
     func setAvailableToBudgetForCurrentMonth(_ value: Double) {
         availableToBudgetByMonth[currentMonthKey] = max(0, value)
+    }
+
+    /// Picks a standard savings rate (10/15/20%) and clears any custom dollar override for the
+    /// current month so the rate-based formula takes over again.
+    func setSavingsRate(_ percent: Double) {
+        desiredSavingsRate = max(0, min(100, percent))
+        clearCustomSavingsTargetForCurrentMonth()
+    }
+
+    /// Locks in an explicit dollar amount for the current month's Savings Target (used when the
+    /// user picks **Other** and types a custom amount).
+    func setCustomSavingsTargetForCurrentMonth(_ amount: Double) {
+        customSavingsTargetByMonth[currentMonthKey] = max(0, amount)
+    }
+
+    /// Removes any custom override for the current month, falling back to the rate-based target.
+    func clearCustomSavingsTargetForCurrentMonth() {
+        customSavingsTargetByMonth.removeValue(forKey: currentMonthKey)
     }
 
     /// Locks in the current `availableToBudget` as an explicit override for the current month.
@@ -707,6 +766,7 @@ final class AppState: ObservableObject {
             fixedBillActualOverridesByMonth: fixedBillActualOverridesByMonth,
             fixedBillPaymentTransactionIdsByMonth: fixedBillPaymentTransactionIdsByMonth,
             availableToBudgetByMonth: availableToBudgetByMonth,
+            customSavingsTargetByMonth: customSavingsTargetByMonth,
             budgetItems: budgetItems,
             transactions: transactions
         )
@@ -736,6 +796,7 @@ final class AppState: ObservableObject {
         monthlyNotes = decoded.monthlyNotes
         hiddenBudgetItemIdsByMonth = decoded.hiddenBudgetItemIdsByMonth
         availableToBudgetByMonth = decoded.availableToBudgetByMonth
+        customSavingsTargetByMonth = decoded.customSavingsTargetByMonth
         fixedBillActualOverridesByMonth = decoded.fixedBillActualOverridesByMonth
         fixedBillPaymentTransactionIdsByMonth = decoded.fixedBillPaymentTransactionIdsByMonth
         budgetItems = migratedBudgetItems

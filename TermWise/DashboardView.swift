@@ -6,6 +6,8 @@ struct DashboardView: View {
     @State private var markedIds: Set<UUID> = []
     @State private var showSavedHistory = false
     @State private var savedHistoryMode: SavedHistoryMode = .cumulative
+    /// Whether the Plan vs Reality bar is showing its tap-to-expand legend.
+    @State private var isBreakdownExpanded = false
 
     let onQuickAddExpense: () -> Void
     let onQuickAddIncome: () -> Void
@@ -191,66 +193,146 @@ struct DashboardView: View {
         }
     }
 
+    /// **Plan vs Reality** card.
+    ///
+    /// Coloured segments represent **what the money was spent on** this month, grouped by
+    /// transaction category. The denominator is always `appState.availableToBudget` (the
+    /// envelope from the Budget Plan screen) — never the legacy `effectiveMonthlyLimit`. Tap
+    /// the bar to expand a small breakdown legend; tap again to collapse.
     private func monthlyExpenseBarCard() -> some View {
-        let limit = max(1, appState.effectiveMonthlyLimit)
-        let totalSpent = appState.totalBudgetCountedSpend
-        let cappedSpent = min(totalSpent, limit)
-        let overflow = max(0, totalSpent - limit)
+        let breakdown = appState.spendingBreakdown
+        let limit = max(1, breakdown.availableToBudget)
+        let actualSpending = breakdown.actualSpending
+        let isOver = breakdown.isOverBudget
 
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("Plan vs Reality")
-                .font(.headline)
-
-            GeometryReader { proxy in
-                let chartWidth = proxy.size.width
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.gray.opacity(0.12))
-                        .frame(height: 18)
-
-                    HStack(spacing: 0) {
-                        ForEach(appState.budgetItems) { item in
-                            let spent = appState.actualAmount(for: item.category)
-                            let segmentRatio = spent / max(1, cappedSpent)
-                            let segmentWidth = chartWidth * CGFloat(segmentRatio) * CGFloat(cappedSpent / limit)
-                            Rectangle()
-                                .fill(colorForCategory(item.category))
-                                .frame(width: segmentWidth, height: 18)
-                        }
-
-                        if overflow > 0 {
-                            Rectangle()
-                                .fill(Color.red)
-                                .frame(width: chartWidth * CGFloat(overflow / limit), height: 18)
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Plan vs Reality")
+                    .font(.headline)
+                Spacer()
+                Image(systemName: isBreakdownExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .frame(height: 18)
 
-            HStack {
-                Text("Spent \(totalSpent.formatted(appState.currencyFormatter)) / Allowed \(appState.effectiveMonthlyLimit.formatted(appState.currencyFormatter))")
+            Button {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                    isBreakdownExpanded.toggle()
+                }
+            } label: {
+                planVsRealityBar(breakdown: breakdown, limit: limit)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Plan vs Reality bar")
+            .accessibilityHint(isBreakdownExpanded ? "Collapse spending breakdown" : "Expand spending breakdown")
+
+            HStack(alignment: .firstTextBaseline) {
+                Text("Actual \(actualSpending.formatted(appState.currencyFormatter)) / Available to Budget \(limit.formatted(appState.currencyFormatter))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if overflow > 0 {
-                    Text("Over by \(overflow.formatted(appState.currencyFormatter))")
+                if isOver {
+                    Text("Over budget by \(breakdown.overBudgetBy.formatted(appState.currencyFormatter))")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundStyle(.red)
                 }
             }
 
+            Text("Tap bar to view spending breakdown")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
             if appState.totalSavedApplied > 0 {
                 Text("Gross spent this month: \(appState.totalActualSpend.formatted(appState.currencyFormatter)) • Used from saved: \(appState.totalSavedApplied.formatted(appState.currencyFormatter))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+
+            if isBreakdownExpanded {
+                spendingBreakdownLegend(breakdown)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            // Red border when over budget, as a small but unmissable warning indicator.
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isOver ? Color.red.opacity(0.45) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    /// The compact horizontal bar itself — segments come from `breakdown.segments` (sorted
+    /// largest-first) and are scaled against `availableToBudget`. When the user is over budget
+    /// the segments naturally overflow past 100% of the track and a red overflow tile is
+    /// appended; the bar's `clipShape` keeps everything tidy inside the rounded rectangle.
+    private func planVsRealityBar(
+        breakdown: FinanceCalculator.SpendingBreakdown,
+        limit: Double
+    ) -> some View {
+        GeometryReader { proxy in
+            let chartWidth = proxy.size.width
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.gray.opacity(0.12))
+                    .frame(height: 18)
+
+                HStack(spacing: 0) {
+                    ForEach(breakdown.segments, id: \.category) { segment in
+                        let width = chartWidth * CGFloat(segment.amount / limit)
+                        Rectangle()
+                            .fill(CategoryPalette.color(for: segment.category))
+                            .frame(width: width, height: 18)
+                    }
+
+                    if breakdown.isOverBudget {
+                        Rectangle()
+                            .fill(Color.red)
+                            .frame(width: chartWidth * CGFloat(breakdown.overBudgetBy / limit), height: 18)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .frame(height: 18)
+        .contentShape(Rectangle())
+    }
+
+    /// Tap-to-expand legend rendered directly under the bar. Each row mirrors one bar segment:
+    /// coloured dot · category · amount · share of *actual* spending. Empty months render a
+    /// short hint instead of an empty list.
+    @ViewBuilder
+    private func spendingBreakdownLegend(_ breakdown: FinanceCalculator.SpendingBreakdown) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+            if breakdown.segments.isEmpty {
+                Text("No expense transactions yet this month.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(breakdown.segments, id: \.category) { segment in
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(CategoryPalette.color(for: segment.category))
+                            .frame(width: 10, height: 10)
+                        Text(segment.category)
+                            .font(.caption)
+                        Spacer()
+                        Text(segment.amount.formatted(appState.currencyFormatter))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                        Text("\(Int((segment.percentageOfActual * 100).rounded()))%")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, alignment: .trailing)
+                    }
+                }
+            }
+        }
     }
 
     private var quickActions: some View {
@@ -450,16 +532,6 @@ struct DashboardView: View {
                 .fontWeight(.bold)
                 .foregroundStyle(.primary)
         }
-    }
-
-    private func colorForCategory(_ category: String) -> Color {
-        let value = category.lowercased()
-        if value.contains("rent") { return .indigo }
-        if value.contains("grocer") { return .green }
-        if value.contains("transport") { return .orange }
-        if value.contains("eat") { return .pink }
-        if value.contains("tuition") || value.contains("saving") { return .teal }
-        return .blue
     }
 
     @ViewBuilder

@@ -31,14 +31,20 @@ enum FinanceBudgetAllocation {
         return fallbackExpectedMonthlyIncome
     }
 
-    /// Planned amounts for categories included in this month’s plan (hidden rows excluded).
+    /// Planned amounts for categories included in this month’s plan (hidden rows excluded), plus
+    /// the envelope-level `savingsTarget` (the amount the user wants to set aside this month from
+    /// the *Savings Target* card on the Budget Plan screen). Negative `savingsTarget` is clamped at 0.
+    ///
+    /// `totalBudgeted = sum(item.planned for non-hidden items) + max(0, savingsTarget)`
     static func calculateTotalBudgeted(
         budgetItems: [BudgetItem],
-        hiddenBudgetItemIds: Set<UUID>
+        hiddenBudgetItemIds: Set<UUID>,
+        savingsTarget: Double = 0
     ) -> Double {
-        budgetItems
+        let itemsTotal = budgetItems
             .filter { !hiddenBudgetItemIds.contains($0.id) }
             .reduce(0) { $0 + $1.planned }
+        return itemsTotal + max(0, savingsTarget)
     }
 
     static func calculateUnallocatedIncome(

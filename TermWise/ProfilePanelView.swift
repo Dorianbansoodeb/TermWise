@@ -1,11 +1,22 @@
 import SwiftUI
 
+/// Profile panel — intentionally simple after the *Budget Goals* section was moved into the
+/// Budget Plan screen. Today the Profile screen surfaces:
+///
+/// 1. The current term + a small "past months" history chart.
+/// 2. A currency picker.
+/// 3. A **Monthly Note** for the currently-selected month (no budgeting numbers).
+/// 4. A placeholder explaining that account / preferences / import-export will live here later.
+///
+/// Anything that mutates the monthly *budget* (Available to Budget, Savings Target, savings rate,
+/// bonus income) lives on the Budget Plan tab so all budgeting controls live in one place. The
+/// Monthly Note is a free-form journaling field and is not part of the budget math.
 struct ProfilePanelView: View {
     @EnvironmentObject private var appState: AppState
 
-    @State private var customSavingsRateText: String = ""
-    @State private var selectedSavingsOption: SavingsRateOption = .fifteen
     @State private var selectedMonth: MonthlySummary?
+    /// Local draft mirrored to `appState.monthlyNotes[currentMonthKey]`. Seeded from app state
+    /// in `.onAppear` and on month rollover; user edits flush back through `onChange`.
     @State private var monthlyNoteDraft: String = ""
 
     private let supportedCurrencies = ["USD", "CAD", "EUR", "GBP"]
@@ -13,7 +24,7 @@ struct ProfilePanelView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Profile & Goals")
+                Text("Profile")
                     .font(.headline)
 
                 Text(appState.currentTerm)
@@ -22,32 +33,33 @@ struct ProfilePanelView: View {
 
                 monthlyHistoryChart
 
-                goalsSection
-
-                weeklyNotesSection
-
-                recalculateSection
-
                 currencySection
+
+                monthlyNoteSection
+
+                profileSettingsPlaceholder
             }
             .padding(12)
         }
         .background(Color(.systemGroupedBackground))
         .scrollDismissesKeyboard(.interactively)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .onAppear {
-            selectedSavingsOption = SavingsRateOption.closest(to: appState.desiredSavingsRate)
-            if selectedSavingsOption == .other {
-                customSavingsRateText = String(Int(appState.desiredSavingsRate))
-            }
-            monthlyNoteDraft = appState.currentMonthNote
-        }
         .sheet(item: $selectedMonth) { month in
             MonthDetailPopup(month: month)
                 .environmentObject(appState)
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { syncNoteDraftFromAppState() }
+        .onChange(of: appState.currentMonthKey) { _, _ in syncNoteDraftFromAppState() }
+        .onChange(of: monthlyNoteDraft) { _, newValue in
+            // Persist immediately so leaving the screen never loses a half-typed note.
+            appState.monthlyNotes[appState.currentMonthKey] = newValue
+        }
+    }
+
+    private func syncNoteDraftFromAppState() {
+        monthlyNoteDraft = appState.currentMonthNote
     }
 
     private var monthlyHistoryChart: some View {
@@ -95,76 +107,6 @@ struct ProfilePanelView: View {
         }
     }
 
-    private var goalsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Budget Goals")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-
-            VStack(alignment: .leading) {
-                Text("Available to Budget This Month")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack {
-                    TextField(
-                        "Amount",
-                        value: Binding(
-                            get: { appState.manualMonthlyLimit ?? appState.monthlySpendingBudget },
-                            set: { appState.manualMonthlyLimit = $0 }
-                        ),
-                        format: .number
-                    )
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    Text(appState.currencyCode)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            VStack(alignment: .leading) {
-                Text("Target savings rate")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker("Savings target", selection: $selectedSavingsOption) {
-                    ForEach(SavingsRateOption.allCases) { option in
-                        Text(option.label).tag(option)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: selectedSavingsOption) {
-                    applySavingsSelection()
-                }
-                if selectedSavingsOption == .other {
-                    TextField("Custom %", text: $customSavingsRateText)
-                        .keyboardType(.numberPad)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: customSavingsRateText) {
-                            applySavingsSelection()
-                        }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Savings target from budget")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(monthlyBudgetSavingsTarget.formatted(appState.currencyFormatter))
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-            }
-
-            VStack(alignment: .leading) {
-                Text("Bonus income (optional)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("0", value: $appState.bonusIncomeForMonth, format: .number)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-            }
-        }
-    }
-
     private var currencySection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Currency")
@@ -180,68 +122,69 @@ struct ProfilePanelView: View {
         }
     }
 
-    private var recalculateSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Recalculate Estimated Budget")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-
-            Text("Based on your available to budget (not necessarily all income) and savings rate, suggested monthly spending limit is \(appState.suggestedMonthlyBudgetFromGoals().formatted(appState.currencyFormatter)).")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button("Recalculate now") {
-                appState.recalculateEstimatedBudget()
-            }
-            .buttonStyle(.borderedProminent)
-        }
-    }
-
-    private var weeklyNotesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    /// Free-form note for the currently selected month. Persists immediately on edit via
+    /// `onChange(of: monthlyNoteDraft)` (see `body`), and re-syncs when the month rolls over.
+    /// Intentionally **not** a budgeting control — see file-level docs.
+    private var monthlyNoteSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Monthly Note")
                 .font(.subheadline)
                 .fontWeight(.semibold)
-            TextEditor(text: $monthlyNoteDraft)
-                .frame(minHeight: 90)
-                .padding(8)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            Button("Save monthly note") {
-                appState.updateMonthlyNote(monthlyNoteDraft, forMonthLabel: currentMonthLabel)
+
+            ZStack(alignment: .topLeading) {
+                if monthlyNoteDraft.isEmpty {
+                    Text("Add a note about this month…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 10)
+                        .allowsHitTesting(false)
+                }
+                TextEditor(text: $monthlyNoteDraft)
+                    .font(.subheadline)
+                    .frame(minHeight: 96)
+                    .padding(.horizontal, 4)
+                    .scrollContentBackground(.hidden)
             }
-            .buttonStyle(.bordered)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+            )
+
+            Text("Saved automatically for \(appState.currentTerm).")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    private var currentMonthLabel: String {
-        let month = Calendar.current.component(.month, from: Date())
-        let symbols = Calendar.current.shortMonthSymbols
-        return symbols[max(0, min(symbols.count - 1, month - 1))]
-    }
-
-    private func applySavingsSelection() {
-        switch selectedSavingsOption {
-        case .ten:
-            appState.desiredSavingsRate = 10
-        case .fifteen:
-            appState.desiredSavingsRate = 15
-        case .twenty:
-            appState.desiredSavingsRate = 20
-        case .other:
-            appState.desiredSavingsRate = min(90, max(0, Double(customSavingsRateText) ?? appState.desiredSavingsRate))
+    /// Placeholder that replaces the old "Budget Goals" section. Budgeting now lives entirely
+    /// on the Budget Plan tab; Profile is reserved for future account/app preferences (currency
+    /// lives here today, more will follow). Monthly Note lives directly above this card.
+    private var profileSettingsPlaceholder: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Profile settings coming soon")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Text("Account, preferences, import/export, and security settings will live here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-    }
-
-    private var monthlyBudgetSavingsTarget: Double {
-        appState.effectiveMonthlyLimit * (appState.desiredSavingsRate / 100)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
 
 private struct MonthDetailPopup: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    @State private var noteDraft: String = ""
 
     let month: MonthlySummary
 
@@ -277,17 +220,12 @@ private struct MonthDetailPopup: View {
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                monthlyIncomeBreakdown
                 monthlyExpenseBreakdown
-                monthNoteSection
 
                 Spacer()
             }
             .padding()
             .background(Color(.systemGroupedBackground))
-            .onAppear {
-                noteDraft = appState.monthlyNote(forMonthLabel: month.monthLabel)
-            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
@@ -298,22 +236,6 @@ private struct MonthDetailPopup: View {
                 }
             }
         }
-    }
-
-    private var monthlyIncomeBreakdown: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Monthly Budget")
-                .font(.headline)
-            HStack {
-                Text("Budget for month")
-                Spacer()
-                Text(month.planned.formatted(appState.currencyFormatter))
-                    .fontWeight(.semibold)
-            }
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     private var monthlyExpenseBreakdown: some View {
@@ -330,25 +252,6 @@ private struct MonthDetailPopup: View {
                         .foregroundStyle(row.actual > row.expected ? .red : .secondary)
                 }
             }
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    private var monthNoteSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Monthly Note")
-                .font(.headline)
-            TextEditor(text: $noteDraft)
-                .frame(minHeight: 90)
-                .padding(8)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            Button("Save note") {
-                appState.updateMonthlyNote(noteDraft, forMonthLabel: month.monthLabel)
-            }
-            .buttonStyle(.bordered)
         }
         .padding()
         .background(Color(.secondarySystemBackground))
@@ -376,31 +279,6 @@ private struct MonthDetailPopup: View {
             ProgressView(value: value, total: max(month.actual, month.planned, 1))
                 .tint(color)
         }
-    }
-}
-
-private enum SavingsRateOption: String, CaseIterable, Identifiable {
-    case ten
-    case fifteen
-    case twenty
-    case other
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .ten: return "10%"
-        case .fifteen: return "15%"
-        case .twenty: return "20%"
-        case .other: return "Other"
-        }
-    }
-
-    static func closest(to value: Double) -> SavingsRateOption {
-        if abs(value - 10) < 0.5 { return .ten }
-        if abs(value - 15) < 0.5 { return .fifteen }
-        if abs(value - 20) < 0.5 { return .twenty }
-        return .other
     }
 }
 

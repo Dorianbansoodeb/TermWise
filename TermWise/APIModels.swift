@@ -180,6 +180,7 @@ struct PersistedStateDTO: Codable {
     let fixedBillActualOverridesByMonth: [String: [UUID: Double]]
     let fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]]
     let availableToBudgetByMonth: [String: Double]
+    let customSavingsTargetByMonth: [String: Double]
     let budgetItems: [BudgetItemDTO]
     let transactions: [TransactionItemDTO]
 
@@ -197,6 +198,7 @@ struct PersistedStateDTO: Codable {
         case fixedBillActualOverridesByMonth = "fixed_bill_actual_overrides_by_month"
         case fixedBillPaymentTransactionIdsByMonth = "fixed_bill_payment_transaction_ids_by_month"
         case availableToBudgetByMonth = "available_to_budget_by_month"
+        case customSavingsTargetByMonth = "custom_savings_target_by_month"
         case budgetItems = "budget_items"
         case transactions
     }
@@ -215,6 +217,7 @@ struct PersistedStateDTO: Codable {
         fixedBillActualOverridesByMonth: [String: [UUID: Double]],
         fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]],
         availableToBudgetByMonth: [String: Double],
+        customSavingsTargetByMonth: [String: Double] = [:],
         budgetItems: [BudgetItemDTO],
         transactions: [TransactionItemDTO]
     ) {
@@ -231,6 +234,7 @@ struct PersistedStateDTO: Codable {
         self.fixedBillActualOverridesByMonth = fixedBillActualOverridesByMonth
         self.fixedBillPaymentTransactionIdsByMonth = fixedBillPaymentTransactionIdsByMonth
         self.availableToBudgetByMonth = availableToBudgetByMonth
+        self.customSavingsTargetByMonth = customSavingsTargetByMonth
         self.budgetItems = budgetItems
         self.transactions = transactions
     }
@@ -252,6 +256,7 @@ extension PersistedStateDTO {
         fixedBillActualOverridesByMonth = try container.decodeIfPresent([String: [UUID: Double]].self, forKey: .fixedBillActualOverridesByMonth) ?? [:]
         fixedBillPaymentTransactionIdsByMonth = try container.decodeIfPresent([String: [UUID: UUID]].self, forKey: .fixedBillPaymentTransactionIdsByMonth) ?? [:]
         availableToBudgetByMonth = try container.decodeIfPresent([String: Double].self, forKey: .availableToBudgetByMonth) ?? [:]
+        customSavingsTargetByMonth = try container.decodeIfPresent([String: Double].self, forKey: .customSavingsTargetByMonth) ?? [:]
         budgetItems = try container.decode([BudgetItemDTO].self, forKey: .budgetItems)
         transactions = try container.decode([TransactionItemDTO].self, forKey: .transactions)
     }
@@ -355,6 +360,7 @@ extension PersistedStateDTO {
             fixedBillActualOverridesByMonth: fixedBillActualOverridesByMonth,
             fixedBillPaymentTransactionIdsByMonth: fixedBillPaymentTransactionIdsByMonth,
             availableToBudgetByMonth: availableToBudgetByMonth,
+            customSavingsTargetByMonth: customSavingsTargetByMonth,
             budgetItems: budgetItems.map { $0.toDomain() },
             transactions: transactions.map { $0.toDomain() }
         )
@@ -377,6 +383,7 @@ extension PersistedState {
             fixedBillActualOverridesByMonth: fixedBillActualOverridesByMonth,
             fixedBillPaymentTransactionIdsByMonth: fixedBillPaymentTransactionIdsByMonth,
             availableToBudgetByMonth: availableToBudgetByMonth,
+            customSavingsTargetByMonth: customSavingsTargetByMonth,
             budgetItems: budgetItems.map { $0.toDTO() },
             transactions: transactions.map { $0.toDTO() }
         )

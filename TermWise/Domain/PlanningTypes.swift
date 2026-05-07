@@ -330,6 +330,9 @@ struct PersistedState: Codable {
     let fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]]
     /// Per calendar month (`year-month`), user override for “available to budget”. Missing key → derive from income (see `FinanceBudgetAllocation`).
     let availableToBudgetByMonth: [String: Double]
+    /// Per calendar month, explicit dollar override for the *Savings Target* card on the Budget Plan
+    /// screen. Missing key → derive from `desiredSavingsRate * availableToBudget`.
+    let customSavingsTargetByMonth: [String: Double]
     let budgetItems: [BudgetItem]
     let transactions: [TransactionItem]
 
@@ -347,6 +350,7 @@ struct PersistedState: Codable {
         case fixedBillActualOverridesByMonth
         case fixedBillPaymentTransactionIdsByMonth
         case availableToBudgetByMonth
+        case customSavingsTargetByMonth
         case budgetItems
         case transactions
     }
@@ -365,6 +369,7 @@ struct PersistedState: Codable {
         fixedBillActualOverridesByMonth: [String: [UUID: Double]],
         fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]],
         availableToBudgetByMonth: [String: Double] = [:],
+        customSavingsTargetByMonth: [String: Double] = [:],
         budgetItems: [BudgetItem],
         transactions: [TransactionItem]
     ) {
@@ -381,6 +386,7 @@ struct PersistedState: Codable {
         self.fixedBillActualOverridesByMonth = fixedBillActualOverridesByMonth
         self.fixedBillPaymentTransactionIdsByMonth = fixedBillPaymentTransactionIdsByMonth
         self.availableToBudgetByMonth = availableToBudgetByMonth
+        self.customSavingsTargetByMonth = customSavingsTargetByMonth
         self.budgetItems = budgetItems
         self.transactions = transactions
     }
@@ -400,6 +406,7 @@ struct PersistedState: Codable {
         fixedBillActualOverridesByMonth = try container.decodeIfPresent([String: [UUID: Double]].self, forKey: .fixedBillActualOverridesByMonth) ?? [:]
         fixedBillPaymentTransactionIdsByMonth = try container.decodeIfPresent([String: [UUID: UUID]].self, forKey: .fixedBillPaymentTransactionIdsByMonth) ?? [:]
         availableToBudgetByMonth = try container.decodeIfPresent([String: Double].self, forKey: .availableToBudgetByMonth) ?? [:]
+        customSavingsTargetByMonth = try container.decodeIfPresent([String: Double].self, forKey: .customSavingsTargetByMonth) ?? [:]
         budgetItems = try container.decode([BudgetItem].self, forKey: .budgetItems)
         transactions = try container.decode([TransactionItem].self, forKey: .transactions)
     }

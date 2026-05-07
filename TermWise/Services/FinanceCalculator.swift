@@ -263,6 +263,206 @@ enum FinanceCalculator {
         )
     }
 
+    // MARK: - Savings target (Budget Plan "Savings Target" card)
+
+    /// Resolves the *envelope-level* savings target the user has chosen for this month.
+    ///
+    /// - When `customAmount` is non-`nil`, it wins (the user picked **Other** and entered a dollar
+    ///   amount). Negative values are clamped at 0.
+    /// - Otherwise the target is `availableToBudget * (rate / 100)` (rate as a whole number).
+    /// - Negative `availableToBudget` is treated as 0.
+    static func savingsTarget(
+        availableToBudget: Double,
+        rate: Double,
+        customAmount: Double? = nil
+    ) -> Double {
+        if let custom = customAmount {
+            return max(0, custom)
+        }
+        let safeAvailable = max(0, availableToBudget)
+        let safeRate = max(0, min(100, rate)) / 100
+        return safeAvailable * safeRate
+    }
+
+    // MARK: - Monthly snapshot (Budget screen "Monthly Snapshot" card)
+
+    /// Pure, month-scoped rollup that powers the Budget screen's *Monthly Snapshot* card. Compares
+    /// **planned allocations** (sum of all non-hidden budget items' planned amounts plus the
+    /// envelope-level Savings Target) against the **actual spending** the user has recorded this
+    /// calendar month. Variable and recurring slices are tracked separately so the UI can surface
+    /// them without recomputing.
+    ///
+    /// Important properties enforced by this type:
+    /// - `plannedBudget` is `sum(item.planned)` over non-hidden budget items, **plus**
+    ///   `savingsTarget` (the envelope-level savings number from the Savings Target card). It
+    ///   never includes income, never includes actual spending, and never double-counts.
+    /// - `actualSpending` is *current month* net expense (transaction.amount − savedApplied),
+    ///   never an all-time total.
+    /// - `remaining` is signed: positive ⇒ "Remaining Budget", negative ⇒ "Over Spent".
+    /// - `recurringBillsTotal` counts only `.fixed` items, ignoring savings goals.
+    struct MonthlySnapshot: Equatable {
+        let plannedBudget: Double
+        let actualSpending: Double
+        let remaining: Double
+        let savingsTarget: Double
+        let variablePlanned: Double
+        let variableSpent: Double
+        let recurringBillsTotal: Int
+        let recurringBillsPaid: Int
+
+        var isOverSpent: Bool { remaining < 0 }
+        var isVariableOverPlanned: Bool { variableSpent > variablePlanned }
+        var allRecurringBillsPaid: Bool { recurringBillsTotal > 0 && recurringBillsPaid == recurringBillsTotal }
+    }
+
+    static func monthlySnapshot(
+        budgetItems: [BudgetItem],
+        transactions: [TransactionItem],
+        hiddenBudgetItemIds: Set<UUID>,
+        savingsTarget: Double = 0,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> MonthlySnapshot {
+        let visibleItems = budgetItems.filter { !hiddenBudgetItemIds.contains($0.id) }
+
+        let itemsPlanned = visibleItems.reduce(0) { $0 + max(0, $1.planned) }
+        let resolvedSavingsTarget = max(0, savingsTarget)
+        let plannedBudget = itemsPlanned + resolvedSavingsTarget
+
+        let actualSpending = totalExpensesThisMonth(
+            transactions: transactions,
+            referenceDate: now,
+            calendar: calendar
+        )
+
+        let variablePlanned = visibleItems
+            .filter { $0.budgetType == .variable }
+            .reduce(0) { $0 + max(0, $1.planned) }
+
+        let variableSpent = VariableSpendingPace.variableSpent(
+            transactions: transactions,
+            budgetItems: budgetItems,
+            calendar: calendar,
+            now: now
+        )
+
+        let recurring = visibleItems.filter { $0.budgetType == .fixed }
+        let recurringPaid = recurring.filter {
+            BudgetSpendCalculator.actualPaidAmount(
+                for: $0,
+                transactions: transactions,
+                now: now,
+                calendar: calendar
+            ) >= $0.planned
+        }.count
+
+        return MonthlySnapshot(
+            plannedBudget: plannedBudget,
+            actualSpending: actualSpending,
+            remaining: plannedBudget - actualSpending,
+            savingsTarget: resolvedSavingsTarget,
+            variablePlanned: variablePlanned,
+            variableSpent: variableSpent,
+            recurringBillsTotal: recurring.count,
+            recurringBillsPaid: recurringPaid
+        )
+    }
+
+    // MARK: - 9b. Spending breakdown by category (Plan vs Reality bar)
+    //
+    // Pure helper used by the Dashboard's Plan vs Reality bar and its tap-to-expand legend.
+    // Inputs:
+    //   - `transactions`: all transactions; the helper filters to current-month expenses.
+    //   - `availableToBudget`: the *source of truth* for the budget envelope. Income transactions
+    //     and the legacy "monthly spending limit" are deliberately ignored here.
+    //
+    // Output is sorted by spent amount descending so the bar renders the largest segment first.
+
+    /// One row of the spending breakdown legend / one segment of the Plan vs Reality bar.
+    struct SpendingBreakdownSegment: Equatable {
+        let category: String
+        /// Net expense amount spent in this category in the selected month (`>= 0`).
+        let amount: Double
+        /// Share of *actual spending* this category represents, in `[0, 1]`. Sums to ~1.0
+        /// across all segments. Useful for the legend's percentage column.
+        let percentageOfActual: Double
+    }
+
+    /// Aggregate result the bar + legend share. `availableToBudget` is mirrored back so the UI
+    /// never has to second-guess which envelope the percentages were computed against.
+    struct SpendingBreakdown: Equatable {
+        let segments: [SpendingBreakdownSegment]
+        /// Sum of net expense amounts in the selected month.
+        let actualSpending: Double
+        /// Mirror of the input — convenient for label rendering.
+        let availableToBudget: Double
+        /// `true` iff `actualSpending > availableToBudget`.
+        let isOverBudget: Bool
+        /// `max(0, actualSpending - availableToBudget)` — what to show after "Over budget by".
+        let overBudgetBy: Double
+    }
+
+    /// Group current-month *expense* transactions by category and produce a breakdown that the
+    /// Plan vs Reality bar (segments) and its tap-to-expand legend (rows) can both render.
+    ///
+    /// - Income transactions are ignored.
+    /// - Categories are grouped case-insensitively but the *original* casing of the first
+    ///   transaction in each bucket is preserved for display.
+    /// - Negative or zero net amounts (e.g. a bill closed with a 100% saved-applied row) are
+    ///   skipped so they don't pollute the breakdown.
+    /// - Segments are returned sorted by `amount` descending (ties broken alphabetically by
+    ///   category) so the largest spend always renders first.
+    static func spendingBreakdown(
+        transactions: [TransactionItem],
+        availableToBudget: Double,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> SpendingBreakdown {
+        let monthExpenses = transactions.filter {
+            $0.type == .expense && calendar.isDate($0.date, equalTo: now, toGranularity: .month)
+        }
+
+        // Sum each category's net spend (`amount - savedApplied`, clamped to >= 0).
+        var totalsByLowercased: [String: (display: String, amount: Double)] = [:]
+        for txn in monthExpenses {
+            let net = BudgetSpendCalculator.netExpenseAmount(txn)
+            guard net > 0 else { continue }
+            let key = txn.category.lowercased()
+            if var entry = totalsByLowercased[key] {
+                entry.amount += net
+                totalsByLowercased[key] = entry
+            } else {
+                totalsByLowercased[key] = (display: txn.category, amount: net)
+            }
+        }
+
+        let actualSpending = totalsByLowercased.values.reduce(0) { $0 + $1.amount }
+        let safeTotal = max(actualSpending, 0.0001) // guard against /0 when there's no spend yet
+
+        let segments = totalsByLowercased.values
+            .map { entry in
+                SpendingBreakdownSegment(
+                    category: entry.display,
+                    amount: entry.amount,
+                    percentageOfActual: entry.amount / safeTotal
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.amount != rhs.amount { return lhs.amount > rhs.amount }
+                return lhs.category.localizedCaseInsensitiveCompare(rhs.category) == .orderedAscending
+            }
+
+        let safeAvailable = max(0, availableToBudget)
+        let isOver = actualSpending > safeAvailable
+        return SpendingBreakdown(
+            segments: segments,
+            actualSpending: actualSpending,
+            availableToBudget: safeAvailable,
+            isOverBudget: isOver,
+            overBudgetBy: max(0, actualSpending - safeAvailable)
+        )
+    }
+
     // MARK: - 10. Daily transaction grouping
 
     /// Pure data shape the Transactions tab renders one section per day.
