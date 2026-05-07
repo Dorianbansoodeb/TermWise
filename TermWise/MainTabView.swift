@@ -9,64 +9,71 @@ struct MainTabView: View {
     private static let pillHeight: CGFloat = 64
     private static let fabSize: CGFloat = 64
 
+    /// Vertical clearance every scrollable screen reserves at the bottom so its content cannot
+    /// be hidden behind the floating pill nav + FAB (and the optional undo snackbar).
+    /// = pill height (64) + outer padding (8) + buffer (~48) → 120pt above the system safe area.
+    /// Apply via `.safeAreaInset(.bottom) { Color.clear.frame(height: MainTabView.bottomNavReservedSpace) }`.
+    static let bottomNavReservedSpace: CGFloat = 120
+
     var body: some View {
-        TabView(selection: $selectedTab) {
-            NavigationStack {
-                DashboardView(
-                    onQuickAddExpense: {
-                        appState.draftTransactionType = .expense
-                        showAddTransactionSheet = true
-                    },
-                    onQuickAddIncome: {
-                        appState.draftTransactionType = .income
-                        showAddTransactionSheet = true
-                    },
-                    onViewMoreTransactions: {
-                        selectedTab = .transactions
-                    }
-                )
-            }
-            .toolbar(.hidden, for: .tabBar)
-            .tag(AppTab.dashboard)
+        ZStack(alignment: .bottom) {
+            TabView(selection: $selectedTab) {
+                NavigationStack {
+                    DashboardView(
+                        onQuickAddExpense: {
+                            appState.draftTransactionType = .expense
+                            showAddTransactionSheet = true
+                        },
+                        onQuickAddIncome: {
+                            appState.draftTransactionType = .income
+                            showAddTransactionSheet = true
+                        },
+                        onViewMoreTransactions: {
+                            selectedTab = .transactions
+                        }
+                    )
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .tag(AppTab.dashboard)
 
-            NavigationStack {
-                TransactionsView()
-            }
-            .toolbar(.hidden, for: .tabBar)
-            .tag(AppTab.transactions)
+                NavigationStack {
+                    TransactionsView()
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .tag(AppTab.transactions)
 
-            NavigationStack {
-                BudgetPlanView()
-            }
-            .toolbar(.hidden, for: .tabBar)
-            .tag(AppTab.budget)
+                NavigationStack {
+                    BudgetPlanView()
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .tag(AppTab.budget)
 
-            NavigationStack {
-                ProfileView()
+                NavigationStack {
+                    ProfileView()
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .tag(AppTab.profile)
             }
-            .toolbar(.hidden, for: .tabBar)
-            .tag(AppTab.profile)
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if let toast = appState.fullyPaidBillToast {
-                Text(toast)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.green)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 12)
-                    .background(Color.green.opacity(0.14))
-                    .overlay(alignment: .bottom) {
-                        Rectangle()
-                            .fill(Color.green.opacity(0.35))
-                            .frame(height: 1)
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let toast = appState.fullyPaidBillToast {
+                    Text(toast)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.green)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 12)
+                        .background(Color.green.opacity(0.14))
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(Color.green.opacity(0.35))
+                                .frame(height: 1)
+                        }
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: appState.fullyPaidBillToast)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: appState.fullyPaidBillToast)
+
             VStack(spacing: 10) {
                 if let undo = appState.pendingUndo {
                     HStack {
@@ -189,6 +196,16 @@ struct MainTabView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Add transaction")
+    }
+}
+
+extension View {
+    /// Reserves vertical space at the bottom of any scrollable screen so its content cannot be
+    /// hidden behind the floating pill nav + FAB. Use on every top-level scrollable in the app.
+    func reservesBottomNavSpace() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: MainTabView.bottomNavReservedSpace)
+        }
     }
 }
 

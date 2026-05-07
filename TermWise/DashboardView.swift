@@ -15,8 +15,8 @@ struct DashboardView: View {
         ScrollView {
             mainContent
                 .padding()
-                .padding(.bottom, 24)
         }
+        .reservesBottomNavSpace()
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Home")
         .toolbar {

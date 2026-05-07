@@ -309,7 +309,7 @@ struct BillReminder: Identifiable, Codable {
     var expectedAmount: Double
 }
 
-enum FixedBillStatus {
+enum FixedBillStatus: Equatable, Sendable {
     case paid
     case upcoming
     case overdue

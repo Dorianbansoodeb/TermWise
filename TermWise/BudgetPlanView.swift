@@ -35,8 +35,8 @@ struct BudgetPlanView: View {
                 addBudgetItemButton
             }
             .padding()
-            .padding(.bottom, 24)
         }
+        .reservesBottomNavSpace()
         .background(Color(.systemGroupedBackground))
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Budget Plan")

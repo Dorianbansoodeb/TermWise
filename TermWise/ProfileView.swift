@@ -7,9 +7,9 @@ struct ProfileView: View {
                 ProfilePanelView()
             }
             .padding()
-            .padding(.bottom, 24)
             .background(Color(.systemGroupedBackground))
         }
+        .reservesBottomNavSpace()
         .navigationTitle("Profile")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
