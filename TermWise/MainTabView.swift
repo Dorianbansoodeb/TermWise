@@ -3,17 +3,27 @@ import SwiftUI
 struct MainTabView: View {
     @State private var selectedTab: AppTab = .dashboard
     @State private var showAddTransactionSheet = false
+    @State private var measuredBottomNavHeight: CGFloat = 0
     @EnvironmentObject private var appState: AppState
 
     private static let fabOrange = Color(red: 249 / 255, green: 115 / 255, blue: 22 / 255)
     private static let pillHeight: CGFloat = 64
     private static let fabSize: CGFloat = 64
 
-    /// Vertical clearance every scrollable screen reserves at the bottom so its content cannot
-    /// be hidden behind the floating pill nav + FAB (and the optional undo snackbar).
-    /// = pill height (64) + outer padding (8) + buffer (~48) → 120pt above the system safe area.
-    /// Apply via `.safeAreaInset(.bottom) { Color.clear.frame(height: MainTabView.bottomNavReservedSpace) }`.
+    /// Visual buffer between the last bit of scrollable content and the top of the floating nav.
+    /// Tuned so a row's tap target never visually collides with the pill on any device size.
+    private static let bottomNavBuffer: CGFloat = 32
+
+    /// Static fallback used before `measuredBottomNavHeight` is reported (and as a sanity floor).
+    /// = pill height (64) + outer padding (8) + buffer (32) + a little extra for the FAB shadow.
     static let bottomNavReservedSpace: CGFloat = 120
+
+    /// Live clearance to use as `.contentMargins(.bottom, …, for: .scrollContent)`. Grows when the
+    /// undo snackbar is on screen so its presence never pushes content behind the pill.
+    private var liveBottomNavReservedSpace: CGFloat {
+        let measured = measuredBottomNavHeight + Self.bottomNavBuffer
+        return max(measured, Self.bottomNavReservedSpace)
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -54,6 +64,7 @@ struct MainTabView: View {
                 .toolbar(.hidden, for: .tabBar)
                 .tag(AppTab.profile)
             }
+            .environment(\.bottomNavReservedSpace, liveBottomNavReservedSpace)
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let toast = appState.fullyPaidBillToast {
                     Text(toast)
@@ -95,6 +106,18 @@ struct MainTabView: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: BottomNavHeightPreferenceKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            )
+        }
+        .onPreferenceChange(BottomNavHeightPreferenceKey.self) { newValue in
+            // Round up to the nearest pixel to avoid sub-pixel jitter triggering re-layouts.
+            measuredBottomNavHeight = ceil(newValue)
         }
         .sheet(isPresented: $showAddTransactionSheet) {
             NavigationStack {
@@ -199,13 +222,50 @@ struct MainTabView: View {
     }
 }
 
+// MARK: - Bottom-nav clearance plumbing
+
+/// PreferenceKey used by `MainTabView` to read the measured height of the floating bottom-nav row
+/// (pill + FAB, plus optional undo snackbar) so screens can reserve exactly the right clearance.
+private struct BottomNavHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct BottomNavReservedSpaceKey: EnvironmentKey {
+    static let defaultValue: CGFloat = MainTabView.bottomNavReservedSpace
+}
+
+extension EnvironmentValues {
+    /// Live amount of clearance every scrollable screen should reserve at the bottom. Provided by
+    /// `MainTabView` after measuring its own bottom-nav row; falls back to a sane static default
+    /// when used outside the tab container (previews, sheets, onboarding).
+    var bottomNavReservedSpace: CGFloat {
+        get { self[BottomNavReservedSpaceKey.self] }
+        set { self[BottomNavReservedSpaceKey.self] = newValue }
+    }
+}
+
 extension View {
-    /// Reserves vertical space at the bottom of any scrollable screen so its content cannot be
-    /// hidden behind the floating pill nav + FAB. Use on every top-level scrollable in the app.
+    /// Reserves vertical space at the bottom of a scrollable screen so its content cannot be
+    /// hidden behind the floating pill nav + FAB. Apply to every top-level `ScrollView` / `List`
+    /// inside the main tab container — the actual height is read from the environment so it stays
+    /// in sync with the current nav (including the optional undo snackbar).
     func reservesBottomNavSpace() -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: MainTabView.bottomNavReservedSpace)
-        }
+        modifier(BottomNavSpaceReserver())
+    }
+}
+
+private struct BottomNavSpaceReserver: ViewModifier {
+    @Environment(\.bottomNavReservedSpace) private var reservedSpace
+
+    func body(content: Content) -> some View {
+        // `.scrollContent` only insets the actual scrollable content area, not the safe area
+        // itself. This is more reliable than `safeAreaInset(.bottom)` inside a TabView with a
+        // hidden tab bar (where the bottom safe-area inset doesn't always propagate down to the
+        // inner ScrollView / List).
+        content.contentMargins(.bottom, reservedSpace, for: .scrollContent)
     }
 }
 
