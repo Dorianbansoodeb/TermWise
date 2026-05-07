@@ -60,6 +60,23 @@ struct MainTabView: View {
             }
             .tag(AppTab.add)
         }
+        .safeAreaInset(edge: .bottom) {
+            if let undo = appState.pendingUndo {
+                HStack {
+                    Text(undo.message)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Undo") {
+                        appState.performPendingUndo()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .background(.thinMaterial)
+            }
+        }
     }
 }
 

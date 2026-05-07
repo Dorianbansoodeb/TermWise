@@ -1,5 +1,7 @@
 import Foundation
 
+/// Local persistence for `PersistedState`. Implementations are **cache** layers: when a remote
+/// repository is active, the backend remains the source of truth after sync.
 protocol AppStateDataStore {
     func loadSnapshot() -> PersistedState?
     func saveSnapshot(_ snapshot: PersistedState)
@@ -9,6 +11,7 @@ protocol RemoteSyncingAppStateDataStore: AppStateDataStore {
     func refreshFromRemote(apply: @escaping (PersistedState) -> Void)
 }
 
+/// UserDefaults-backed cache for offline use and cold start before network refresh.
 struct LocalUserDefaultsAppStateDataStore: AppStateDataStore {
     private let storageKey: String
 

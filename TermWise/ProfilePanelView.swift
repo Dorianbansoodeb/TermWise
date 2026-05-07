@@ -57,10 +57,10 @@ struct ProfilePanelView: View {
                 .fontWeight(.semibold)
 
             GeometryReader { proxy in
-                let maxPercent = max(100, appState.monthlyHistory.map { (100 * $0.actual / max(1, $0.planned)) }.max() ?? 100)
+                let maxPercent = max(100, appState.monthlyHistory.map { BudgetProgressMetrics.percentUsedDouble(actual: $0.actual, planned: $0.planned) }.max() ?? 100)
                 HStack(alignment: .bottom, spacing: 8) {
                     ForEach(appState.monthlyHistory) { month in
-                        let percent = (100 * month.actual / max(1, month.planned))
+                        let percent = BudgetProgressMetrics.percentUsedDouble(actual: month.actual, planned: month.planned)
                         let capped = min(percent, maxPercent)
                         let height = CGFloat(capped / maxPercent) * (proxy.size.height - 34)
                         Button {
@@ -246,7 +246,7 @@ private struct MonthDetailPopup: View {
     let month: MonthlySummary
 
     private var percentUsed: Double {
-        (month.actual / max(1, month.planned)) * 100
+        BudgetProgressMetrics.percentUsedDouble(actual: month.actual, planned: month.planned)
     }
 
     var body: some View {

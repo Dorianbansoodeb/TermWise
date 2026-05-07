@@ -1,5 +1,10 @@
 import Foundation
 
+// MARK: - Repository boundaries
+// `AppState` depends only on `AppRepository` — never on `UserDefaults` or URLSession directly.
+// - **Remote / source of truth:** use `APIAppRepository` + `OfflineFirstRemoteSyncingAppRepository` so writes hit the API and local store acts as cache.
+// - **Offline / previews:** use `LocalCacheAppRepository` backed by `AppStateDataStore` (disk cache until backend is wired).
+
 protocol BudgetRepository {
     func loadBudgetItems() -> [BudgetItem]?
     func saveBudgetItems(_ items: [BudgetItem])
@@ -19,7 +24,8 @@ protocol RemoteSyncingAppRepository: AppRepository {
     func refreshFromRemote(apply: @escaping (PersistedState) -> Void)
 }
 
-final class SnapshotAppRepository: AppRepository {
+/// Persists the full `PersistedState` through `AppStateDataStore` (typically `UserDefaults` as offline cache).
+final class LocalCacheAppRepository: AppRepository {
     private let dataStore: AppStateDataStore
 
     init(dataStore: AppStateDataStore = LocalUserDefaultsAppStateDataStore()) {
@@ -84,3 +90,6 @@ final class SnapshotAppRepository: AppRepository {
         dataStore.saveSnapshot(snapshot)
     }
 }
+
+/// Backward-compatible name; prefer `LocalCacheAppRepository` in new code.
+typealias SnapshotAppRepository = LocalCacheAppRepository

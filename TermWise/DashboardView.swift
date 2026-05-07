@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var recentlyRemovedTransaction: TransactionItem?
     @State private var completedIds: Set<UUID> = []
     @State private var markedIds: Set<UUID> = []
     @State private var showSavedHistory = false
@@ -22,24 +21,6 @@ struct DashboardView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 AppOverflowMenu()
-            }
-        }
-        .safeAreaInset(edge: .bottom) {
-            if let removed = recentlyRemovedTransaction {
-                HStack {
-                    Text("Removed \(removed.category)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Undo") {
-                        appState.restoreTransaction(removed)
-                        recentlyRemovedTransaction = nil
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-                .background(.thinMaterial)
             }
         }
         .sheet(isPresented: $showSavedHistory) {
@@ -321,7 +302,9 @@ struct DashboardView: View {
                         .foregroundStyle(item.type == .expense ? .red : .green)
 
                     Button(role: .destructive) {
-                        recentlyRemovedTransaction = appState.removeTransaction(id: item.id)
+                        if let removed = appState.removeTransaction(id: item.id) {
+                            appState.presentRemovedTransactionUndo(removed)
+                        }
                     } label: {
                         Image(systemName: "trash")
                     }
@@ -330,7 +313,9 @@ struct DashboardView: View {
                 .padding(.vertical, 4)
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
-                        recentlyRemovedTransaction = appState.removeTransaction(id: item.id)
+                        if let removed = appState.removeTransaction(id: item.id) {
+                            appState.presentRemovedTransactionUndo(removed)
+                        }
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
@@ -365,7 +350,7 @@ struct DashboardView: View {
     private var eatingOutPercent: Int {
         guard let eating = appState.budgetItems.first(where: { $0.category.localizedCaseInsensitiveContains("eating") }) else { return 0 }
         let spent = appState.actualAmount(for: eating.category)
-        return Int((spent / max(1, eating.planned)) * 100)
+        return BudgetProgressMetrics.percentUsed(actual: spent, planned: eating.planned)
     }
 
     private func keyValue(label: String, value: Double) -> some View {

@@ -1,5 +1,7 @@
 import Foundation
 
+/// Reads and writes domain models via `PersistedStateDTO` / nested DTOs (snake_case JSON contract).
+/// Wire `OfflineFirstRemoteSyncingAppRepository` in front of this type for cache + API.
 final class APIAppRepository: AppRepository {
     private let client: APIClient
 
@@ -55,6 +57,8 @@ final class APIAppRepository: AppRepository {
     }
 }
 
+/// **Offline-first:** reads always from `localRepository` (fast cache); writes update cache then API when `syncOnSave`.
+/// **Remote refresh:** `refreshFromRemote` replaces cache from `apiRepository` then applies on the main thread.
 final class OfflineFirstRemoteSyncingAppRepository: RemoteSyncingAppRepository {
     private let localRepository: AppRepository
     private let apiRepository: AppRepository

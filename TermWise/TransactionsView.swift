@@ -8,7 +8,6 @@ struct TransactionsView: View {
     @State private var completedIds: Set<UUID> = []
     @State private var markedIds: Set<UUID> = []
     @State private var moreActionsTarget: TransactionItem?
-    @State private var recentlyRemovedTransaction: TransactionItem?
     private let calendar = Calendar.current
 
     var body: some View {
@@ -97,24 +96,6 @@ struct TransactionsView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .safeAreaInset(edge: .bottom) {
-            if let removed = recentlyRemovedTransaction {
-                HStack {
-                    Text("Removed \(removed.category)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Undo") {
-                        appState.restoreTransaction(removed)
-                        recentlyRemovedTransaction = nil
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-                .background(.thinMaterial)
-            }
-        }
     }
 
     private var filteredTransactions: [TransactionItem] {
@@ -158,7 +139,7 @@ struct TransactionsView: View {
                     .reduce(0) { $0 + $1.amount }
                 let expenses = sortedTransactions
                     .filter { $0.type == .expense }
-                    .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
+                    .reduce(0) { $0 + BudgetSpendCalculator.netExpenseAmount($1) }
                 let net = income - expenses
                 return TransactionDateGroup(
                     id: day,
@@ -182,7 +163,7 @@ struct TransactionsView: View {
     private var totalExpenses: Double {
         filteredTransactions
             .filter { $0.type == .expense }
-            .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
+            .reduce(0) { $0 + BudgetSpendCalculator.netExpenseAmount($1) }
     }
 
     private func toggle(_ set: inout Set<UUID>, _ id: UUID) {
@@ -222,7 +203,11 @@ struct TransactionsView: View {
             onComplete: { toggleCompleted(id) },
             onMark: { toggleMarked(id) },
             onMore: { moreActionsTarget = transaction },
-            onDelete: { recentlyRemovedTransaction = appState.removeTransaction(id: id) }
+            onDelete: {
+                if let removed = appState.removeTransaction(id: id) {
+                    appState.presentRemovedTransactionUndo(removed)
+                }
+            }
         )
         .environmentObject(appState)
     }
@@ -359,7 +344,7 @@ private struct TransactionListRow: View {
 
     private var amountText: String {
         let sign = transaction.type == .expense ? "-" : "+"
-        let netAmount = transaction.type == .expense ? max(0, transaction.amount - transaction.savedApplied) : transaction.amount
+        let netAmount = transaction.type == .expense ? BudgetSpendCalculator.netExpenseAmount(transaction) : transaction.amount
         return "\(sign)\(netAmount.formatted(appState.currencyFormatter))"
     }
 

@@ -12,7 +12,7 @@ struct BudgetPlanView: View {
     @State private var newCategoryDueDay: Int = 1
     @State private var newCategoryDueWeekday: Int = 2
     @State private var newCategoryDueDate: Date = Date()
-    @State private var newCategoryIsPaid: Bool = false
+    @State private var fullyPaidToast: String?
 
     var body: some View {
         ScrollView {
@@ -34,6 +34,25 @@ struct BudgetPlanView: View {
             }
             .padding()
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let toast = fullyPaidToast {
+                Text(toast)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.green)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 12)
+                    .background(Color.green.opacity(0.14))
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(Color.green.opacity(0.35))
+                            .frame(height: 1)
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: fullyPaidToast)
         .background(Color(.systemGroupedBackground))
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Budget Plan")
@@ -112,6 +131,25 @@ struct BudgetPlanView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 
+    private func markFixedBillFullyPaidIfNeeded(billId: UUID, billCategory: String) {
+        guard let bill = appState.budgetItems.first(where: { $0.id == billId && $0.budgetType == .fixed }) else { return }
+        let preActual = appState.actualPaidAmount(for: bill)
+        let remaining = bill.planned - preActual
+        guard remaining > 0 else { return }
+        guard let txn = appState.markFixedBillRemainingPaid(billId: billId) else { return }
+        appState.presentMarkAsPaidUndo(
+            billId: billId,
+            transactionId: txn.id,
+            addedAmount: remaining,
+            billCategoryName: billCategory
+        )
+        fullyPaidToast = "Fully paid \(billCategory)"
+        Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run { fullyPaidToast = nil }
+        }
+    }
+
     private func budgetCategoryCard(item: Binding<BudgetItem>) -> some View {
         let id = item.wrappedValue.id
         let actual = item.wrappedValue.budgetType == .fixed
@@ -149,8 +187,15 @@ struct BudgetPlanView: View {
                 }
             }
 
-            ProgressView(value: actual, total: max(1, item.wrappedValue.planned))
-                .tint(actual > item.wrappedValue.planned ? .red : .blue)
+            ProgressView(
+                value: min(actual, item.wrappedValue.planned),
+                total: max(1, item.wrappedValue.planned)
+            )
+                .tint(
+                    actual > item.wrappedValue.planned
+                        ? .red
+                        : (isFixed && actual >= item.wrappedValue.planned ? .green : .blue)
+                )
 
             HStack {
                 Text("Planned")
@@ -212,8 +257,16 @@ struct BudgetPlanView: View {
                                 )
                                 .labelsHidden()
                             }
-                            Toggle("Paid", isOn: item.isPaid)
+                            if actual < item.wrappedValue.planned {
+                                Button("Mark as Paid") {
+                                    markFixedBillFullyPaidIfNeeded(
+                                        billId: id,
+                                        billCategory: item.wrappedValue.category
+                                    )
+                                }
+                                .buttonStyle(.borderedProminent)
                                 .font(.caption)
+                            }
                         }
                     }
                     Text(dueDateText)
@@ -237,23 +290,22 @@ struct BudgetPlanView: View {
                 }
                 HStack {
                     Spacer()
-                    if item.wrappedValue.isPaid {
+                    if actual >= item.wrappedValue.planned {
                         Label("Paid", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                             .font(.subheadline)
-                        Button("Mark as Unpaid") {
-                            appState.markFixedBillUnpaid(id)
-                        }
-                        .buttonStyle(.bordered)
                     } else {
                         Button("Mark as Paid") {
-                            appState.markFixedBillPaid(id)
+                            markFixedBillFullyPaidIfNeeded(
+                                billId: id,
+                                billCategory: item.wrappedValue.category
+                            )
                         }
                         .buttonStyle(.borderedProminent)
                     }
                 }
             } else {
-                Text("\(progressPercent(actual: actual, planned: item.wrappedValue.planned))% used")
+                Text("\(BudgetProgressMetrics.percentUsed(actual: actual, planned: item.wrappedValue.planned))% used")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
@@ -291,10 +343,6 @@ struct BudgetPlanView: View {
                 .foregroundStyle(emphasize ? (value < 0 ? .red : .green) : .secondary)
                 .fontWeight(emphasize ? .semibold : .regular)
         }
-    }
-
-    private func progressPercent(actual: Double, planned: Double) -> Int {
-        Int((actual / max(1, planned)) * 100)
     }
 
     private var fixedItemIndices: [Int] {
@@ -363,7 +411,6 @@ struct BudgetPlanView: View {
                 if newCategoryFrequency == .oneTime {
                     DatePicker("Due date", selection: $newCategoryDueDate, displayedComponents: .date)
                 }
-                Toggle("Paid", isOn: $newCategoryIsPaid)
             }
 
             Button("Add Category") {
@@ -375,7 +422,7 @@ struct BudgetPlanView: View {
                     dueDay: (newCategoryBudgetType == .fixed && newCategoryFrequency == .monthly) ? newCategoryDueDay : nil,
                     dueWeekday: (newCategoryBudgetType == .fixed && (newCategoryFrequency == .weekly || newCategoryFrequency == .biweekly)) ? newCategoryDueWeekday : nil,
                     dueDate: (newCategoryBudgetType == .fixed && newCategoryFrequency == .oneTime) ? newCategoryDueDate : nil,
-                    isPaid: newCategoryBudgetType == .fixed ? newCategoryIsPaid : false
+                    isPaid: false
                 )
                 newCategoryName = ""
                 newCategoryAmount = ""
@@ -384,7 +431,6 @@ struct BudgetPlanView: View {
                 newCategoryDueDay = 1
                 newCategoryDueWeekday = 2
                 newCategoryDueDate = Date()
-                newCategoryIsPaid = false
             }
             .buttonStyle(.borderedProminent)
             .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Double(newCategoryAmount) ?? -1) < 0)
