@@ -85,6 +85,8 @@ struct BudgetItemDTO: Codable {
     let dueWeekday: Int?
     let dueDate: String?
     let isPaid: Bool
+    let targetAmount: Double?
+    let deadline: String?
 
     private enum CodingKeys: String, CodingKey {
         case id, category, planned, frequency
@@ -93,6 +95,49 @@ struct BudgetItemDTO: Codable {
         case dueWeekday = "due_weekday"
         case dueDate = "due_date"
         case isPaid = "is_paid"
+        case targetAmount = "target_amount"
+        case deadline
+    }
+
+    init(
+        id: UUID,
+        category: String,
+        planned: Double,
+        budgetType: String,
+        frequency: String,
+        dueDay: Int?,
+        dueWeekday: Int?,
+        dueDate: String?,
+        isPaid: Bool,
+        targetAmount: Double? = nil,
+        deadline: String? = nil
+    ) {
+        self.id = id
+        self.category = category
+        self.planned = planned
+        self.budgetType = budgetType
+        self.frequency = frequency
+        self.dueDay = dueDay
+        self.dueWeekday = dueWeekday
+        self.dueDate = dueDate
+        self.isPaid = isPaid
+        self.targetAmount = targetAmount
+        self.deadline = deadline
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        category = try container.decode(String.self, forKey: .category)
+        planned = try container.decode(Double.self, forKey: .planned)
+        budgetType = try container.decode(String.self, forKey: .budgetType)
+        frequency = try container.decode(String.self, forKey: .frequency)
+        dueDay = try container.decodeIfPresent(Int.self, forKey: .dueDay)
+        dueWeekday = try container.decodeIfPresent(Int.self, forKey: .dueWeekday)
+        dueDate = try container.decodeIfPresent(String.self, forKey: .dueDate)
+        isPaid = try container.decodeIfPresent(Bool.self, forKey: .isPaid) ?? false
+        targetAmount = try container.decodeIfPresent(Double.self, forKey: .targetAmount)
+        deadline = try container.decodeIfPresent(String.self, forKey: .deadline)
     }
 }
 
@@ -134,6 +179,7 @@ struct PersistedStateDTO: Codable {
     let hiddenBudgetItemIdsByMonth: [String: Set<UUID>]
     let fixedBillActualOverridesByMonth: [String: [UUID: Double]]
     let fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]]
+    let availableToBudgetByMonth: [String: Double]
     let budgetItems: [BudgetItemDTO]
     let transactions: [TransactionItemDTO]
 
@@ -150,8 +196,64 @@ struct PersistedStateDTO: Codable {
         case hiddenBudgetItemIdsByMonth = "hidden_budget_item_ids_by_month"
         case fixedBillActualOverridesByMonth = "fixed_bill_actual_overrides_by_month"
         case fixedBillPaymentTransactionIdsByMonth = "fixed_bill_payment_transaction_ids_by_month"
+        case availableToBudgetByMonth = "available_to_budget_by_month"
         case budgetItems = "budget_items"
         case transactions
+    }
+
+    init(
+        onboarding: OnboardingDataDTO,
+        manualMonthlyLimit: Double?,
+        desiredSavingsRate: Double,
+        bonusIncomeForMonth: Double,
+        currencyCode: String,
+        billReminders: [BillReminderDTO],
+        weeklyNotes: [String: String],
+        pinnedTransactionIds: Set<UUID>,
+        monthlyNotes: [String: String],
+        hiddenBudgetItemIdsByMonth: [String: Set<UUID>],
+        fixedBillActualOverridesByMonth: [String: [UUID: Double]],
+        fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]],
+        availableToBudgetByMonth: [String: Double],
+        budgetItems: [BudgetItemDTO],
+        transactions: [TransactionItemDTO]
+    ) {
+        self.onboarding = onboarding
+        self.manualMonthlyLimit = manualMonthlyLimit
+        self.desiredSavingsRate = desiredSavingsRate
+        self.bonusIncomeForMonth = bonusIncomeForMonth
+        self.currencyCode = currencyCode
+        self.billReminders = billReminders
+        self.weeklyNotes = weeklyNotes
+        self.pinnedTransactionIds = pinnedTransactionIds
+        self.monthlyNotes = monthlyNotes
+        self.hiddenBudgetItemIdsByMonth = hiddenBudgetItemIdsByMonth
+        self.fixedBillActualOverridesByMonth = fixedBillActualOverridesByMonth
+        self.fixedBillPaymentTransactionIdsByMonth = fixedBillPaymentTransactionIdsByMonth
+        self.availableToBudgetByMonth = availableToBudgetByMonth
+        self.budgetItems = budgetItems
+        self.transactions = transactions
+    }
+}
+
+extension PersistedStateDTO {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        onboarding = try container.decode(OnboardingDataDTO.self, forKey: .onboarding)
+        manualMonthlyLimit = try container.decodeIfPresent(Double.self, forKey: .manualMonthlyLimit)
+        desiredSavingsRate = try container.decode(Double.self, forKey: .desiredSavingsRate)
+        bonusIncomeForMonth = try container.decode(Double.self, forKey: .bonusIncomeForMonth)
+        currencyCode = try container.decode(String.self, forKey: .currencyCode)
+        billReminders = try container.decode([BillReminderDTO].self, forKey: .billReminders)
+        weeklyNotes = try container.decode([String: String].self, forKey: .weeklyNotes)
+        pinnedTransactionIds = try container.decodeIfPresent(Set<UUID>.self, forKey: .pinnedTransactionIds) ?? []
+        monthlyNotes = try container.decodeIfPresent([String: String].self, forKey: .monthlyNotes) ?? [:]
+        hiddenBudgetItemIdsByMonth = try container.decodeIfPresent([String: Set<UUID>].self, forKey: .hiddenBudgetItemIdsByMonth) ?? [:]
+        fixedBillActualOverridesByMonth = try container.decodeIfPresent([String: [UUID: Double]].self, forKey: .fixedBillActualOverridesByMonth) ?? [:]
+        fixedBillPaymentTransactionIdsByMonth = try container.decodeIfPresent([String: [UUID: UUID]].self, forKey: .fixedBillPaymentTransactionIdsByMonth) ?? [:]
+        availableToBudgetByMonth = try container.decodeIfPresent([String: Double].self, forKey: .availableToBudgetByMonth) ?? [:]
+        budgetItems = try container.decode([BudgetItemDTO].self, forKey: .budgetItems)
+        transactions = try container.decode([TransactionItemDTO].self, forKey: .transactions)
     }
 }
 
@@ -172,7 +274,9 @@ extension BudgetItemDTO {
             dueDay: dueDay,
             dueWeekday: dueWeekday,
             dueDate: dueDate.flatMap { apiDateFormatter.date(from: $0) },
-            isPaid: isPaid
+            isPaid: isPaid,
+            targetAmount: targetAmount,
+            deadline: deadline.flatMap { apiDateFormatter.date(from: $0) }
         )
     }
 }
@@ -188,7 +292,9 @@ extension BudgetItem {
             dueDay: dueDay,
             dueWeekday: dueWeekday,
             dueDate: dueDate.map { apiDateFormatter.string(from: $0) },
-            isPaid: isPaid
+            isPaid: isPaid,
+            targetAmount: targetAmount,
+            deadline: deadline.map { apiDateFormatter.string(from: $0) }
         )
     }
 }
@@ -248,6 +354,7 @@ extension PersistedStateDTO {
             hiddenBudgetItemIdsByMonth: hiddenBudgetItemIdsByMonth,
             fixedBillActualOverridesByMonth: fixedBillActualOverridesByMonth,
             fixedBillPaymentTransactionIdsByMonth: fixedBillPaymentTransactionIdsByMonth,
+            availableToBudgetByMonth: availableToBudgetByMonth,
             budgetItems: budgetItems.map { $0.toDomain() },
             transactions: transactions.map { $0.toDomain() }
         )
@@ -269,6 +376,7 @@ extension PersistedState {
             hiddenBudgetItemIdsByMonth: hiddenBudgetItemIdsByMonth,
             fixedBillActualOverridesByMonth: fixedBillActualOverridesByMonth,
             fixedBillPaymentTransactionIdsByMonth: fixedBillPaymentTransactionIdsByMonth,
+            availableToBudgetByMonth: availableToBudgetByMonth,
             budgetItems: budgetItems.map { $0.toDTO() },
             transactions: transactions.map { $0.toDTO() }
         )

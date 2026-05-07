@@ -134,6 +134,16 @@ extension TransactionItem: Equatable {
     }
 }
 
+/// Captures an income transaction the user just added, so the UI can ask whether to assign it
+/// to the budget envelope. Mirror in Android with the same field names.
+struct PendingIncomePrompt: Equatable, Identifiable {
+    let transactionId: UUID
+    let amount: Double
+    let categoryName: String
+
+    var id: UUID { transactionId }
+}
+
 /// Shared bottom undo bar (transaction delete + mark-as-paid on bills).
 struct PendingUndoBar: Equatable {
     enum Action: Equatable {
@@ -155,9 +165,14 @@ struct BudgetItem: Identifiable, Codable {
     var dueWeekday: Int?
     var dueDate: Date?
     var isPaid: Bool
+    /// Savings goals only: total target amount the user is saving toward.
+    var targetAmount: Double?
+    /// Savings goals only: optional target deadline.
+    var deadline: Date?
 
     private enum CodingKeys: String, CodingKey {
         case id, category, planned, budgetType, frequency, dueDay, dueWeekday, dueDate, isPaid
+        case targetAmount, deadline
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
@@ -173,7 +188,9 @@ struct BudgetItem: Identifiable, Codable {
         dueDay: Int?,
         dueWeekday: Int?,
         dueDate: Date?,
-        isPaid: Bool = false
+        isPaid: Bool = false,
+        targetAmount: Double? = nil,
+        deadline: Date? = nil
     ) {
         self.id = id
         self.category = category
@@ -184,6 +201,8 @@ struct BudgetItem: Identifiable, Codable {
         self.dueWeekday = dueWeekday
         self.dueDate = dueDate
         self.isPaid = isPaid
+        self.targetAmount = targetAmount
+        self.deadline = deadline
     }
 
     init(from decoder: Decoder) throws {
@@ -197,6 +216,8 @@ struct BudgetItem: Identifiable, Codable {
         dueWeekday = try container.decodeIfPresent(Int.self, forKey: .dueWeekday)
         dueDate = try container.decodeIfPresent(Date.self, forKey: .dueDate)
         isPaid = try container.decodeIfPresent(Bool.self, forKey: .isPaid) ?? false
+        targetAmount = try container.decodeIfPresent(Double.self, forKey: .targetAmount)
+        deadline = try container.decodeIfPresent(Date.self, forKey: .deadline)
 
         let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
         if let legacyRule = try legacyContainer.decodeIfPresent(DueDateRule.self, forKey: .dueRule), frequency == .none {
@@ -224,13 +245,15 @@ struct BudgetItem: Identifiable, Codable {
 enum BudgetType: String, Codable, CaseIterable, Identifiable {
     case fixed
     case variable
+    case savings
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .fixed: return "Recurring Bill / Fixed Expense"
-        case .variable: return "Variable Spending Category"
+        case .fixed: return "Recurring Bill"
+        case .variable: return "Variable Spending"
+        case .savings: return "Savings Goal"
         }
     }
 }
@@ -305,6 +328,8 @@ struct PersistedState: Codable {
     let hiddenBudgetItemIdsByMonth: [String: Set<UUID>]
     let fixedBillActualOverridesByMonth: [String: [UUID: Double]]
     let fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]]
+    /// Per calendar month (`year-month`), user override for “available to budget”. Missing key → derive from income (see `FinanceBudgetAllocation`).
+    let availableToBudgetByMonth: [String: Double]
     let budgetItems: [BudgetItem]
     let transactions: [TransactionItem]
 
@@ -321,6 +346,7 @@ struct PersistedState: Codable {
         case hiddenBudgetItemIdsByMonth
         case fixedBillActualOverridesByMonth
         case fixedBillPaymentTransactionIdsByMonth
+        case availableToBudgetByMonth
         case budgetItems
         case transactions
     }
@@ -338,6 +364,7 @@ struct PersistedState: Codable {
         hiddenBudgetItemIdsByMonth: [String: Set<UUID>],
         fixedBillActualOverridesByMonth: [String: [UUID: Double]],
         fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]],
+        availableToBudgetByMonth: [String: Double] = [:],
         budgetItems: [BudgetItem],
         transactions: [TransactionItem]
     ) {
@@ -353,6 +380,7 @@ struct PersistedState: Codable {
         self.hiddenBudgetItemIdsByMonth = hiddenBudgetItemIdsByMonth
         self.fixedBillActualOverridesByMonth = fixedBillActualOverridesByMonth
         self.fixedBillPaymentTransactionIdsByMonth = fixedBillPaymentTransactionIdsByMonth
+        self.availableToBudgetByMonth = availableToBudgetByMonth
         self.budgetItems = budgetItems
         self.transactions = transactions
     }
@@ -371,6 +399,7 @@ struct PersistedState: Codable {
         hiddenBudgetItemIdsByMonth = try container.decodeIfPresent([String: Set<UUID>].self, forKey: .hiddenBudgetItemIdsByMonth) ?? [:]
         fixedBillActualOverridesByMonth = try container.decodeIfPresent([String: [UUID: Double]].self, forKey: .fixedBillActualOverridesByMonth) ?? [:]
         fixedBillPaymentTransactionIdsByMonth = try container.decodeIfPresent([String: [UUID: UUID]].self, forKey: .fixedBillPaymentTransactionIdsByMonth) ?? [:]
+        availableToBudgetByMonth = try container.decodeIfPresent([String: Double].self, forKey: .availableToBudgetByMonth) ?? [:]
         budgetItems = try container.decode([BudgetItem].self, forKey: .budgetItems)
         transactions = try container.decode([TransactionItem].self, forKey: .transactions)
     }

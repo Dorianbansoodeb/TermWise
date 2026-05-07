@@ -15,6 +15,7 @@ struct DashboardView: View {
         ScrollView {
             mainContent
                 .padding()
+                .padding(.bottom, 24)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Home")
@@ -34,9 +35,7 @@ struct DashboardView: View {
 
     private var mainContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !appState.upcomingUrgentBills.isEmpty {
-                urgentBillsCard
-            }
+            urgentBillsCard
 
             Text("\(greetingText), \(displayName)")
                 .font(.title2)
@@ -46,6 +45,7 @@ struct DashboardView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
+            incomeAndBudgetCard
             expectedSavedCard
             monthlyExpenseBarCard()
             spendTrendCard
@@ -56,34 +56,101 @@ struct DashboardView: View {
         }
     }
 
+    private var incomeAndBudgetCard: some View {
+        let unallocatedRow = FinanceBudgetAllocation.unallocatedRow(
+            availableToBudget: appState.availableToBudget,
+            totalBudgeted: appState.totalBudgeted
+        )
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Income & Budget")
+                .font(.headline)
+            dashboardFinanceRow("Total Income", appState.totalIncome)
+            dashboardFinanceRow("Available to Budget", appState.availableToBudget)
+            if appState.reserveNotBudgeted > 0 {
+                dashboardFinanceRow("Reserve / Not Budgeted", appState.reserveNotBudgeted)
+            }
+            dashboardFinanceRow("Total Budgeted", appState.totalBudgeted)
+            dashboardFinanceRow(
+                unallocatedRow.label,
+                unallocatedRow.value,
+                valueColor: unallocatedRow.isOver ? .red : .primary
+            )
+            if appState.availableToBudget > appState.totalIncome && appState.totalIncome > 0 {
+                infoLine(
+                    "You are budgeting more than your recorded income.",
+                    color: .red
+                )
+            }
+            if unallocatedRow.isOver {
+                infoLine(
+                    "Your budget is over your available amount by \(unallocatedRow.value.formatted(appState.currencyFormatter)).",
+                    color: .red
+                )
+            } else if unallocatedRow.value > 0 {
+                infoLine(
+                    "You have \(unallocatedRow.value.formatted(appState.currencyFormatter)) left unallocated.",
+                    color: .secondary
+                )
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func infoLine(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(color)
+    }
+
+    private func dashboardFinanceRow(_ label: String, _ value: Double, valueColor: Color = .primary) -> some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+            Spacer()
+            Text(value.formatted(appState.currencyFormatter))
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(valueColor)
+        }
+    }
+
     private var spendTrendCard: some View {
-        let predictedOver = appState.projectedEndOfMonthSpend > appState.effectiveMonthlyLimit
+        let pace = appState.variableSpendingPace
+        let badgeColor: Color = {
+            switch pace.status {
+            case .onTrack: return .green
+            case .watch: return .orange
+            case .overBudgetRisk: return .red
+            }
+        }()
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Spending Trend")
+                Text("Variable Spending Trend")
                     .font(.headline)
                 Spacer()
-                Text(predictedOver ? "Risk: Over budget" : "Good pace")
+                Text(pace.status.badgeText)
                     .font(.caption)
                     .fontWeight(.semibold)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background((predictedOver ? Color.red : Color.green).opacity(0.15))
+                    .background(badgeColor.opacity(0.15))
+                    .foregroundStyle(badgeColor)
                     .clipShape(Capsule())
             }
 
             LineTrendChartView(
-                dailyActualCumulative: appState.dailyActualCumulative(),
+                dailyActualCumulative: appState.dailyVariableActualCumulative(),
                 currentDay: appState.currentDayOfMonth,
                 daysInMonth: appState.daysInCurrentMonth,
-                projectedEndValue: appState.projectedEndOfMonthSpend,
-                projectedColor: predictedOver ? .red : .green,
-                limit: appState.effectiveMonthlyLimit,
-                goalLimit: appState.spendingGoalLimit
+                projectedEndValue: pace.projectedMonthEndSpend,
+                projectedColor: badgeColor,
+                variableLimit: pace.variableBudget
             )
-            .frame(height: 150)
+            .frame(height: 180)
 
-            Text("Projection runs from today to month-end using expected daily usage (\(appState.expectedDailySpend.formatted(appState.currencyFormatter))/day).")
+            Text("Fixed bills are tracked separately. This chart shows flexible spending pace.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -92,33 +159,36 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
+    @ViewBuilder
     private var expectedSavedCard: some View {
-        Button {
-            showSavedHistory = true
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Total Saved by Using the App")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.9))
-                Text(appState.expectedTotalSaved.formatted(appState.currencyFormatter))
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text("Cumulative saved pool you can use when a month goes over budget.")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.9))
-                Text("Tap to view monthly and cumulative history")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.8))
+        if appState.budgetCushion > 0 {
+            Button {
+                showSavedHistory = true
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Budget Cushion")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.9))
+                    Text(appState.budgetCushion.formatted(appState.currencyFormatter))
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("Money preserved by staying under planned spending this month.")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.9))
+                    Text("Tap to view past months")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .buttonStyle(.plain)
+            .background(
+                LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .shadow(color: .blue.opacity(0.2), radius: 14, y: 8)
         }
-        .padding()
-        .buttonStyle(.plain)
-        .background(
-            LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .shadow(color: .blue.opacity(0.2), radius: 14, y: 8)
     }
 
     private func monthlyExpenseBarCard() -> some View {
@@ -200,9 +270,13 @@ struct DashboardView: View {
     }
 
     private var spendingProgressCard: some View {
-        let progress = min(1.0, appState.totalBudgetCountedSpend / max(1, appState.effectiveMonthlyLimit))
+        let pace = appState.variableSpendingPace
+        let progress: Double = pace.variableBudget > 0
+            ? min(1.0, pace.variableSpent / pace.variableBudget)
+            : 0
+        let variableItems = appState.budgetItems.filter { $0.budgetType == .variable }
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Spending Progress")
+            Text("Variable Spending Progress")
                 .font(.headline)
 
             HStack(spacing: 20) {
@@ -211,7 +285,7 @@ struct DashboardView: View {
                         .stroke(Color.gray.opacity(0.2), lineWidth: 10)
                     Circle()
                         .trim(from: 0, to: progress)
-                        .stroke(progress > 1 ? Color.red : Color.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                        .stroke(progress >= 1 ? Color.red : Color.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     Text("\(Int(progress * 100))%")
                         .font(.headline)
@@ -220,18 +294,28 @@ struct DashboardView: View {
                 .frame(width: 86, height: 86)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(appState.budgetItems.prefix(3)) { item in
-                        let spent = appState.actualAmount(for: item.category)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.category)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            ProgressView(value: spent, total: max(1, item.planned))
-                                .tint(spent > item.planned ? .red : .blue)
+                    if variableItems.isEmpty {
+                        Text("Add a variable spending category in Budget to track flexible categories.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(variableItems.prefix(3)) { item in
+                            let spent = appState.actualAmount(for: item.category)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.category)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                ProgressView(value: spent, total: max(1, item.planned))
+                                    .tint(spent > item.planned ? .red : .blue)
+                            }
                         }
                     }
                 }
             }
+
+            Text("Recurring bills are tracked separately under Budget → Recurring Bills.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
         .padding()
         .background(Color(.secondarySystemBackground))
@@ -253,20 +337,24 @@ struct DashboardView: View {
         }
     }
 
+    @ViewBuilder
     private var urgentBillsCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Urgent")
-                .font(.headline)
-            ForEach(appState.upcomingUrgentBills) { bill in
-                Text("Pay \(bill.title) in <= 2 days (\(bill.expectedAmount.formatted(appState.currencyFormatter))).")
-                    .font(.subheadline)
-                    .foregroundStyle(.red)
+        let messages = appState.urgentBillMessages
+        if !messages.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Urgent")
+                    .font(.headline)
+                ForEach(messages) { message in
+                    Text(BudgetPlanningService.urgentBillSentence(message, currencyFormat: appState.currencyFormatter))
+                        .font(.subheadline)
+                        .foregroundStyle(.red)
+                }
             }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.red.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.red.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var recentTransactionsCard: some View {
@@ -580,139 +668,62 @@ private struct LineTrendChartView: View {
     let daysInMonth: Int
     let projectedEndValue: Double
     let projectedColor: Color
-    let limit: Double
-    let goalLimit: Double
+    /// Total monthly limit for *variable* (flexible) spending.
+    let variableLimit: Double
     @State private var selectedDayIndex: Int? = nil
+
+    private let leftInset: CGFloat = 10
+    private let rightInset: CGFloat = 10
+    private let topInset: CGFloat = 18
+    private let bottomInset: CGFloat = 22
 
     var body: some View {
         GeometryReader { proxy in
-            let width = proxy.size.width
-            let height = proxy.size.height
-            let dataMax = max(1, (dailyActualCumulative + [projectedEndValue, limit, goalLimit]).max() ?? 1)
-            // Add headroom so the limit line is visually around mid-chart.
-            let maxY = max(dataMax * 1.6, limit * 2.0)
-            let yLimit = height - (CGFloat(limit) / CGFloat(maxY) * height)
-            let yGoal = height - (CGFloat(goalLimit) / CGFloat(maxY) * height)
-            ZStack {
+            let outerWidth = proxy.size.width
+            let outerHeight = proxy.size.height
+            let width = max(1, outerWidth - leftInset - rightInset)
+            let height = max(1, outerHeight - topInset - bottomInset)
+
+            let dataMax = max(1, (dailyActualCumulative + [projectedEndValue, variableLimit]).max() ?? 1)
+            let maxY = max(dataMax * 1.25, variableLimit * 1.2)
+            let yLimit = topInset + (height - (CGFloat(variableLimit) / CGFloat(maxY) * height))
+            let yProjected = topInset + (height - (CGFloat(projectedEndValue) / CGFloat(maxY) * height))
+            let projectedX = leftInset + width
+
+            ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.gray.opacity(0.08))
 
-                Path { path in
-                    guard !dailyActualCumulative.isEmpty else { return }
-                    let firstY = height - (CGFloat(dailyActualCumulative[0]) / CGFloat(maxY) * height)
-                    path.move(to: CGPoint(x: 0, y: firstY))
+                actualPath(width: width, height: height, maxY: maxY)
 
-                    // Stair-step (stagnant) graph from day 1 to current day.
-                    for dayIndex in 1..<dailyActualCumulative.count {
-                        let previous = dailyActualCumulative[dayIndex - 1]
-                        let current = dailyActualCumulative[dayIndex]
-                        let x = CGFloat(dayIndex) / CGFloat(max(1, daysInMonth - 1)) * width
-                        let prevY = height - (CGFloat(previous) / CGFloat(maxY) * height)
-                        let currY = height - (CGFloat(current) / CGFloat(maxY) * height)
-                        path.addLine(to: CGPoint(x: x, y: prevY))
-                        path.addLine(to: CGPoint(x: x, y: currY))
-                    }
-                }
-                .stroke(Color.blue, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                paceLine(width: width, height: height, maxY: maxY)
 
-                // Straight dotted projection from current day to end of month.
-                Path { path in
-                    guard let currentValue = dailyActualCumulative.last else { return }
-                    let currentX = CGFloat(max(0, currentDay - 1)) / CGFloat(max(1, daysInMonth - 1)) * width
-                    let currentY = height - (CGFloat(currentValue) / CGFloat(maxY) * height)
-                    let endX = width
-                    let endY = height - (CGFloat(projectedEndValue) / CGFloat(maxY) * height)
+                limitLine(width: width, yLimit: yLimit)
 
-                    path.move(to: CGPoint(x: currentX, y: currentY))
-                    path.addLine(to: CGPoint(x: endX, y: endY))
-                }
-                .stroke(projectedColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 4]))
+                projectionLine(
+                    width: width,
+                    height: height,
+                    maxY: maxY,
+                    projectedX: projectedX,
+                    projectedY: yProjected
+                )
 
-                // Limit line
-                if limit > 0 {
-                    Path { path in
-                        path.move(to: CGPoint(x: 0, y: yLimit))
-                        path.addLine(to: CGPoint(x: width, y: yLimit))
-                    }
-                    .stroke(Color.gray.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                limitLabel(yLimit: yLimit, projectedY: yProjected)
 
-                    Text("Limit \(limit.formatted(appState.currencyFormatter))")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.85))
-                        .clipShape(Capsule())
-                        .position(x: min(width - 70, max(60, width * 0.72)), y: max(12, yLimit - 10))
-                }
+                paceLabel(width: width, height: height, maxY: maxY, yLimit: yLimit)
 
-                if goalLimit > 0 {
-                    Path { path in
-                        path.move(to: CGPoint(x: 0, y: yGoal))
-                        path.addLine(to: CGPoint(x: width, y: yGoal))
-                    }
-                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                projectedLabel(yProjected: yProjected, yLimit: yLimit, projectedX: projectedX)
 
-                    Text("Goal \(goalLimit.formatted(appState.currencyFormatter))")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.85))
-                        .clipShape(Capsule())
-                        .position(x: min(width - 65, max(55, width * 0.52)), y: max(12, yGoal - 10))
-                }
-
-                // Day markers for readability
-                HStack {
-                    Text("1")
-                    Spacer()
-                    Text("\(daysInMonth)")
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .frame(maxHeight: .infinity, alignment: .bottom)
+                dayAxis(outerWidth: outerWidth, outerHeight: outerHeight)
 
                 if let selectedDayIndex {
-                    let x = CGFloat(selectedDayIndex) / CGFloat(max(1, daysInMonth - 1)) * width
-                    let amount = amountFor(dayIndex: selectedDayIndex)
-                    let y = height - (CGFloat(amount) / CGFloat(maxY) * height)
-                    let isFuture = selectedDayIndex + 1 > currentDay
-                    let dayExpectedLimit = limit * (Double(selectedDayIndex + 1) / Double(max(1, daysInMonth)))
-                    let statusColor: Color = isFuture
-                        ? (amount <= dayExpectedLimit ? .green : .red)
-                        : .blue
-
-                    Path { path in
-                        path.move(to: CGPoint(x: x, y: 0))
-                        path.addLine(to: CGPoint(x: x, y: height))
-                    }
-                    .stroke(Color.gray.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 10, height: 10)
-                        .position(x: x, y: y)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(dateLabel(for: selectedDayIndex))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(amount.formatted(appState.currencyFormatter))
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(statusColor)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .position(
-                        x: min(width - 80, max(80, x)),
-                        y: max(20, y - 24)
+                    selectedDayOverlay(
+                        index: selectedDayIndex,
+                        width: width,
+                        height: height,
+                        outerWidth: outerWidth,
+                        outerHeight: outerHeight,
+                        maxY: maxY
                     )
                 }
             }
@@ -720,8 +731,8 @@ private struct LineTrendChartView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        let clampedX = min(max(0, value.location.x), width)
-                        let ratio = clampedX / max(1, width)
+                        let clampedX = min(max(leftInset, value.location.x), leftInset + width)
+                        let ratio = (clampedX - leftInset) / max(1, width)
                         let index = Int(round(ratio * CGFloat(max(1, daysInMonth - 1))))
                         selectedDayIndex = min(max(0, index), max(0, daysInMonth - 1))
                     }
@@ -732,9 +743,256 @@ private struct LineTrendChartView: View {
         }
     }
 
-    private func amountFor(dayIndex: Int) -> Double {
-        let dayNumber = dayIndex + 1
-        return appState.projectedAmountForDay(dayNumber: dayNumber)
+    // MARK: - Lines
+
+    private func actualPath(width: CGFloat, height: CGFloat, maxY: Double) -> some View {
+        Path { path in
+            guard !dailyActualCumulative.isEmpty else { return }
+            let firstY = topInset + (height - (CGFloat(dailyActualCumulative[0]) / CGFloat(maxY) * height))
+            path.move(to: CGPoint(x: leftInset, y: firstY))
+
+            for dayIndex in 1..<dailyActualCumulative.count {
+                let previous = dailyActualCumulative[dayIndex - 1]
+                let current = dailyActualCumulative[dayIndex]
+                let x = leftInset + CGFloat(dayIndex) / CGFloat(max(1, daysInMonth - 1)) * width
+                let prevY = topInset + (height - (CGFloat(previous) / CGFloat(maxY) * height))
+                let currY = topInset + (height - (CGFloat(current) / CGFloat(maxY) * height))
+                path.addLine(to: CGPoint(x: x, y: prevY))
+                path.addLine(to: CGPoint(x: x, y: currY))
+            }
+        }
+        .stroke(Color.blue, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+    }
+
+    private func paceLine(width: CGFloat, height: CGFloat, maxY: Double) -> some View {
+        Path { path in
+            guard variableLimit > 0, daysInMonth > 0 else { return }
+            let endY = topInset + (height - (CGFloat(variableLimit) / CGFloat(maxY) * height))
+            path.move(to: CGPoint(x: leftInset, y: topInset + height))
+            path.addLine(to: CGPoint(x: leftInset + width, y: endY))
+        }
+        .stroke(Color.orange, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 3]))
+    }
+
+    private func limitLine(width: CGFloat, yLimit: CGFloat) -> some View {
+        Group {
+            if variableLimit > 0 {
+                Path { path in
+                    path.move(to: CGPoint(x: leftInset, y: yLimit))
+                    path.addLine(to: CGPoint(x: leftInset + width, y: yLimit))
+                }
+                .stroke(Color.gray.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+            }
+        }
+    }
+
+    private func projectionLine(
+        width: CGFloat,
+        height: CGFloat,
+        maxY: Double,
+        projectedX: CGFloat,
+        projectedY: CGFloat
+    ) -> some View {
+        Path { path in
+            guard let currentValue = dailyActualCumulative.last else { return }
+            let currentX = leftInset + CGFloat(max(0, currentDay - 1)) / CGFloat(max(1, daysInMonth - 1)) * width
+            let currentY = topInset + (height - (CGFloat(currentValue) / CGFloat(maxY) * height))
+            path.move(to: CGPoint(x: currentX, y: currentY))
+            path.addLine(to: CGPoint(x: projectedX, y: projectedY))
+        }
+        .stroke(projectedColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 4]))
+    }
+
+    // MARK: - Labels (collision-aware)
+
+    private func limitLabel(yLimit: CGFloat, projectedY: CGFloat) -> some View {
+        Group {
+            if variableLimit > 0 {
+                let limitText = "Limit \(variableLimit.formatted(appState.currencyFormatter))"
+                let preferredY = max(topInset + 8, yLimit - 12)
+                pillLabel(limitText, color: .secondary)
+                    .position(x: leftInset + 6 + labelWidth(for: limitText) / 2, y: preferredY)
+            }
+        }
+    }
+
+    private func paceLabel(width: CGFloat, height: CGFloat, maxY: Double, yLimit: CGFloat) -> some View {
+        Group {
+            if variableLimit > 0 {
+                let xRatio: CGFloat = 0.55
+                let xPos = leftInset + width * xRatio
+                let valueAt = variableLimit * Double(xRatio)
+                let yLine = topInset + (height - (CGFloat(valueAt) / CGFloat(maxY) * height))
+                let candidateY = yLine + 14
+                let safeY = abs(candidateY - yLimit) < 16 ? max(topInset + 6, yLine - 14) : candidateY
+                pillLabel("Budget Pace", color: .orange)
+                    .position(x: xPos, y: safeY)
+            }
+        }
+    }
+
+    private func projectedLabel(yProjected: CGFloat, yLimit: CGFloat, projectedX: CGFloat) -> some View {
+        let label = "Projected"
+        let widthEstimate = labelWidth(for: label)
+        let labelX = max(leftInset + widthEstimate / 2, projectedX - widthEstimate / 2 - 4)
+        let above = yProjected - 12
+        let below = yProjected + 12
+        let candidate = above < topInset + 6 ? below : above
+        let final: CGFloat = abs(candidate - yLimit) < 14 ? (candidate > yLimit ? candidate + 14 : candidate - 14) : candidate
+        return pillLabel(label, color: projectedColor)
+            .position(x: labelX, y: final)
+    }
+
+    private func pillLabel(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    /// Cheap label-width estimate used for collision-safe positioning.
+    private func labelWidth(for text: String) -> CGFloat {
+        CGFloat(text.count) * 6.5 + 14
+    }
+
+    private func dayAxis(outerWidth: CGFloat, outerHeight: CGFloat) -> some View {
+        HStack {
+            Text("1")
+            Spacer()
+            Text("\(daysInMonth)")
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, leftInset)
+        .frame(width: outerWidth, height: outerHeight, alignment: .bottom)
+    }
+
+    // MARK: - Selected-day callout
+
+    @ViewBuilder
+    private func selectedDayOverlay(
+        index: Int,
+        width: CGFloat,
+        height: CGFloat,
+        outerWidth: CGFloat,
+        outerHeight: CGFloat,
+        maxY: Double
+    ) -> some View {
+        let dayNumber = index + 1
+        let x = leftInset + CGFloat(index) / CGFloat(max(1, daysInMonth - 1)) * width
+        let isPastOrToday = dayNumber <= currentDay
+
+        // Actual cumulative variable spend on this day, only available for days <= today.
+        let actualForDay: Double? = {
+            guard isPastOrToday, !dailyActualCumulative.isEmpty else { return nil }
+            let arrayIndex = min(index, dailyActualCumulative.count - 1)
+            guard arrayIndex >= 0 else { return nil }
+            return dailyActualCumulative[arrayIndex]
+        }()
+
+        // Projected value follows the red projection line: equals actual on past days, extrapolates for future days.
+        let projectedForDay = appState.projectedVariableAmountForDay(dayNumber: dayNumber)
+
+        // Budget pace follows the orange dashed line: limit * day/daysInMonth.
+        let paceForDay = variableLimit * (Double(dayNumber) / Double(max(1, daysInMonth)))
+
+        // Anchor the dot on the red projection line for visual consistency with the projection.
+        let dotY = topInset + (height - (CGFloat(projectedForDay) / CGFloat(maxY) * height))
+
+        Path { path in
+            path.move(to: CGPoint(x: x, y: topInset))
+            path.addLine(to: CGPoint(x: x, y: topInset + height))
+        }
+        .stroke(Color.gray.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+        Circle()
+            .fill(projectedColor)
+            .frame(width: 10, height: 10)
+            .position(x: x, y: dotY)
+
+        tooltipBubble(
+            day: index,
+            actual: actualForDay,
+            projected: projectedForDay,
+            pace: paceForDay
+        )
+        .position(
+            tooltipPosition(
+                anchorX: x,
+                anchorY: dotY,
+                outerWidth: outerWidth,
+                outerHeight: outerHeight,
+                hasActual: actualForDay != nil
+            )
+        )
+    }
+
+    private func tooltipBubble(
+        day index: Int,
+        actual: Double?,
+        projected: Double,
+        pace: Double
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(dateLabel(for: index))
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            if let actual {
+                tooltipRow(label: "Actual", value: actual, color: .blue)
+            }
+            tooltipRow(label: "Projected", value: projected, color: projectedColor)
+            tooltipRow(label: "Budget Pace", value: pace, color: .orange)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 6, y: 2)
+    }
+
+    private func tooltipRow(label: String, value: Double, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text("\(label):")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value.formatted(appState.currencyFormatter))
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(color)
+        }
+    }
+
+    /// Keeps the tooltip inside the chart bounds. Prefers placing it above the anchor; flips below if there's no room.
+    private func tooltipPosition(
+        anchorX: CGFloat,
+        anchorY: CGFloat,
+        outerWidth: CGFloat,
+        outerHeight: CGFloat,
+        hasActual: Bool
+    ) -> CGPoint {
+        let estimatedWidth: CGFloat = 168
+        let estimatedHeight: CGFloat = hasActual ? 92 : 70
+        let halfW = estimatedWidth / 2
+        let halfH = estimatedHeight / 2
+        let margin: CGFloat = 6
+
+        let clampedX = min(outerWidth - halfW - margin, max(halfW + margin, anchorX))
+
+        let preferredAbove = anchorY - halfH - 14
+        let preferredBelow = anchorY + halfH + 14
+        let aboveFits = preferredAbove >= halfH + margin
+        let chosenY = aboveFits ? preferredAbove : preferredBelow
+        let clampedY = min(outerHeight - halfH - margin, max(halfH + margin, chosenY))
+
+        return CGPoint(x: clampedX, y: clampedY)
     }
 
     private func dateLabel(for dayIndex: Int) -> String {

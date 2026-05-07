@@ -14,10 +14,12 @@ enum BudgetItemMigration {
                 updated.dueDay = updated.dueDay ?? 1
             }
 
-            if item.category == "Tuition/Savings" {
-                updated.budgetType = .fixed
+            // Items historically named "Tuition/Savings" are now Savings Goals.
+            // We migrate the type, but keep `planned` as the monthly contribution.
+            if item.category.localizedCaseInsensitiveContains("tuition") || item.category.localizedCaseInsensitiveContains("savings") {
+                updated.budgetType = .savings
                 updated.frequency = .monthly
-                updated.dueDay = 7
+                if updated.dueDay == nil { updated.dueDay = 7 }
             }
 
             if item.category.localizedCaseInsensitiveContains("phone"), item.frequency == .none || item.dueDay == nil {

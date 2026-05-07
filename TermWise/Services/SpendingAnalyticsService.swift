@@ -3,20 +3,60 @@ import Foundation
 /// Awareness copy, projections, and spend curves. Backend may eventually return these precomputed.
 enum SpendingAnalyticsService {
 
+    /// Messages mixed across all categories.
+    ///
+    /// - **Variable** spending: pace-based — flags `>=70%` used or projected overspend.
+    /// - **Fixed bills / savings goals**: due-date status (paid / due in N days / overdue) — never pace-projected.
     static func awarenessMessages(
         budgetItems: [BudgetItem],
-        transactions: [TransactionItem]
+        transactions: [TransactionItem],
+        now: Date = Date(),
+        calendar: Calendar = .current
     ) -> [String] {
         var messages: [String] = []
+
         for item in budgetItems {
-            let spent = BudgetSpendCalculator.actualAmountAllTime(transactions: transactions, budgetCategory: item.category)
-            let percentUsed = item.planned > 0 ? Int((spent / item.planned) * 100) : 0
-            if percentUsed >= 70 && percentUsed < 100 {
-                messages.append("You have used \(percentUsed)% of your \(item.category) budget.")
-            } else if percentUsed >= 100 {
-                messages.append("At this pace, you may exceed your \(item.category) budget.")
+            switch item.budgetType {
+            case .variable:
+                let spent = BudgetSpendCalculator.actualAmountAllTime(transactions: transactions, budgetCategory: item.category)
+                let percentUsed = item.planned > 0 ? Int((spent / item.planned) * 100) : 0
+                if percentUsed >= 70 && percentUsed < 100 {
+                    messages.append("You have used \(percentUsed)% of your \(item.category) budget.")
+                } else if percentUsed >= 100 {
+                    messages.append("At this pace, you may exceed your \(item.category) budget.")
+                }
+            case .fixed, .savings:
+                let actual = BudgetSpendCalculator.actualPaidAmount(for: item, transactions: transactions, now: now, calendar: calendar)
+                if actual >= item.planned {
+                    messages.append("\(item.category) is paid for this month.")
+                    continue
+                }
+                guard
+                    item.frequency != .none,
+                    let delta = FixedBillSchedule.daysUntilDue(
+                        frequency: item.frequency,
+                        dueDay: item.dueDay,
+                        dueWeekday: item.dueWeekday,
+                        dueDate: item.dueDate,
+                        now: now,
+                        calendar: calendar
+                    )
+                else { continue }
+
+                if delta < 0 {
+                    messages.append("\(item.category) is overdue.")
+                } else if delta == 0 {
+                    messages.append("\(item.category) is due today.")
+                } else if delta == 1 {
+                    messages.append("\(item.category) is due tomorrow.")
+                } else if delta <= 7 {
+                    messages.append("\(item.category) is due in \(delta) days.")
+                } else if let dueLabel = FixedBillSchedule.dueDayLabel(for: item, calendar: calendar) {
+                    messages.append("\(item.category) is due on \(dueLabel).")
+                }
             }
         }
+
         if messages.isEmpty {
             messages.append("You are currently on track with your spending plan.")
         }

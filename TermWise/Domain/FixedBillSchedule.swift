@@ -46,7 +46,8 @@ enum FixedBillSchedule {
         now: Date,
         calendar: Calendar
     ) -> FixedBillStatus {
-        guard item.budgetType == .fixed else { return .upcoming }
+        // Both fixed bills and savings goals are paid/upcoming/overdue by transactions vs. planned + due-date.
+        guard item.budgetType == .fixed || item.budgetType == .savings else { return .upcoming }
         let actual = BudgetSpendCalculator.actualPaidAmount(for: item, transactions: transactions, now: now, calendar: calendar)
         if actual >= item.planned {
             return .paid
@@ -60,5 +61,24 @@ enum FixedBillSchedule {
             calendar: calendar
         ) ?? 0
         return delta < 0 ? .overdue : .upcoming
+    }
+
+    /// Human-readable due-date description for fixed bills / savings goals (e.g. "Day 15", "Wednesday").
+    static func dueDayLabel(for item: BudgetItem, calendar: Calendar = .current) -> String? {
+        switch item.frequency {
+        case .none:
+            return nil
+        case .monthly:
+            guard let dueDay = item.dueDay else { return nil }
+            return "Day \(dueDay)"
+        case .weekly, .biweekly:
+            guard let dueWeekday = item.dueWeekday else { return nil }
+            let symbols = calendar.weekdaySymbols
+            let index = max(0, min(symbols.count - 1, dueWeekday - 1))
+            return symbols[index]
+        case .oneTime:
+            guard let dueDate = item.dueDate else { return nil }
+            return dueDate.formatted(date: .abbreviated, time: .omitted)
+        }
     }
 }

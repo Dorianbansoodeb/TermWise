@@ -18,6 +18,7 @@ This folder holds **Foundation-only** planning logic: no SwiftUI, Combine, or UI
 | `FixedBillPaidSync.swift` | `isPaid` sync from transactions |
 | `MarkAsPaidRules.swift` | `mark_as_paid` provenance + undo eligibility |
 | `BudgetItemMigration.swift` | Default / migration rules for loaded budget rows |
+| `VariableSpendingPace.swift` | Variable-only pace + risk classification (chart + dashboard badge) |
 
 ## `Services/` (app target, UI-agnostic)
 
@@ -28,6 +29,7 @@ This folder holds **Foundation-only** planning logic: no SwiftUI, Combine, or UI
 | `BudgetPlanningService.swift` | Urgent bills, onboarding tuition split |
 | `SpendingAnalyticsService.swift` | Awareness strings, projections, cumulative spend |
 | `CalendarPeriodKeys.swift` | Month/week cache keys |
+| `FinanceBudgetAllocation.swift` | Income vs envelope: `calculateTotalIncome`, `calculateAvailableToBudget`, `calculateTotalBudgeted`, `calculateUnallocatedIncome`, `calculateBudgetDifference`, `calculateReserveNotBudgeted`, `calculateBudgetCushionThisMonth`, `unallocatedRow` |
 
 When you change a rule here, update Android (and any OpenAPI/schema docs) in the same PR whenever possible.
 

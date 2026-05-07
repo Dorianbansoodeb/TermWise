@@ -22,29 +22,7 @@ struct TransactionsView: View {
             .background(Color(.systemGroupedBackground))
 
             List {
-                Section("Summary") {
-                    HStack {
-                        Text("Income")
-                        Spacer()
-                        Text(totalIncome.formatted(appState.currencyFormatter))
-                            .foregroundStyle(.green)
-                            .fontWeight(.semibold)
-                    }
-                    HStack {
-                        Text("Expenses")
-                        Spacer()
-                        Text(totalExpenses.formatted(appState.currencyFormatter))
-                            .foregroundStyle(.red)
-                            .fontWeight(.semibold)
-                    }
-                    HStack {
-                        Text("Net")
-                        Spacer()
-                        Text((totalIncome - totalExpenses).formatted(appState.currencyFormatter))
-                            .foregroundStyle((totalIncome - totalExpenses) >= 0 ? .green : .red)
-                            .fontWeight(.semibold)
-                    }
-                }
+                summarySection
 
                 ForEach(groupedTransactions) { group in
                     Section {
@@ -53,14 +31,14 @@ struct TransactionsView: View {
                                 .listRowBackground(Color.clear)
                         }
                     } header: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(group.title)
-                                .font(.headline)
-                            Text("\(signedAmount(group.expenses, sign: "-")) • \(signedAmount(group.income, sign: "+")) • Net \(signedAmount(group.net, sign: group.net >= 0 ? "+" : "-"))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        groupHeader(group)
                     }
+                }
+
+                Section {
+                    Color.clear.frame(height: 24)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
             }
             .listStyle(.insetGrouped)
@@ -96,6 +74,102 @@ struct TransactionsView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    @ViewBuilder
+    private var summarySection: some View {
+        Section("Summary") {
+            switch filter {
+            case .all:
+                summaryRow(label: "Income", value: totalIncome, color: .green, sign: "+")
+                summaryRow(label: "Expenses", value: totalExpenses, color: .red, sign: "-")
+                summaryRow(
+                    label: "Net",
+                    value: totalIncome - totalExpenses,
+                    color: (totalIncome - totalExpenses) >= 0 ? .green : .red,
+                    sign: (totalIncome - totalExpenses) >= 0 ? "+" : "-"
+                )
+            case .expenses:
+                summaryRow(label: "Expenses", value: totalExpenses, color: .red, sign: "-")
+                metaRow(label: "Number of expenses", value: "\(expenseCount)")
+                if expenseCount > 0 {
+                    summaryRow(
+                        label: "Average expense",
+                        value: averageExpense,
+                        color: .secondary,
+                        sign: "-"
+                    )
+                }
+            case .income:
+                summaryRow(label: "Income", value: totalIncome, color: .green, sign: "+")
+                metaRow(label: "Expenses", value: "$0.00")
+                metaRow(label: "Number of income entries", value: "\(incomeCount)")
+                if incomeCount > 0 {
+                    summaryRow(
+                        label: "Average income",
+                        value: averageIncome,
+                        color: .secondary,
+                        sign: "+"
+                    )
+                }
+            }
+        }
+    }
+
+    private func summaryRow(label: String, value: Double, color: Color, sign: String) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text("\(sign)\(abs(value).formatted(appState.currencyFormatter))")
+                .foregroundStyle(color)
+                .fontWeight(.semibold)
+        }
+    }
+
+    private func metaRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func groupHeader(_ group: TransactionDateGroup) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(group.title)
+                .font(.headline)
+            Text(groupSummaryText(group))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func groupSummaryText(_ group: TransactionDateGroup) -> String {
+        let expenses = "Expenses -\(group.expenses.formatted(appState.currencyFormatter))"
+        let income = "Income +\(group.income.formatted(appState.currencyFormatter))"
+        let netSign = group.net >= 0 ? "+" : "-"
+        let net = "Net \(netSign)\(abs(group.net).formatted(appState.currencyFormatter))"
+        return "\(expenses) • \(income) • \(net)"
+    }
+
+    private var expenseCount: Int {
+        filteredTransactions.filter { $0.type == .expense }.count
+    }
+
+    private var incomeCount: Int {
+        filteredTransactions.filter { $0.type == .income }.count
+    }
+
+    private var averageExpense: Double {
+        guard expenseCount > 0 else { return 0 }
+        return totalExpenses / Double(expenseCount)
+    }
+
+    private var averageIncome: Double {
+        guard incomeCount > 0 else { return 0 }
+        return totalIncome / Double(incomeCount)
     }
 
     private var filteredTransactions: [TransactionItem] {
@@ -185,10 +259,6 @@ struct TransactionsView: View {
         formatter.locale = Locale.current
         formatter.dateFormat = dateYear == currentYear ? "EEEE, MMM d" : "MMMM d, yyyy"
         return formatter.string(from: date)
-    }
-
-    private func signedAmount(_ value: Double, sign: String) -> String {
-        "\(sign)\(abs(value).formatted(appState.currencyFormatter))"
     }
 
     @ViewBuilder
@@ -315,21 +385,35 @@ private struct TransactionListRow: View {
 
     @ViewBuilder
     private var statusBadges: some View {
-        if isPinned {
-            Text("Pinned")
-                .font(.caption2)
-                .foregroundStyle(.yellow)
+        // Render only when the user explicitly applied the status to this transaction.
+        if isPinned || isCompleted || isMarked {
+            HStack(spacing: 6) {
+                if isPinned {
+                    statusBadge(icon: "pin.fill", text: "Pinned", color: .yellow)
+                }
+                if isCompleted {
+                    statusBadge(icon: "checkmark.circle.fill", text: "Completed", color: .green)
+                }
+                if isMarked {
+                    statusBadge(icon: "flag.fill", text: "Marked", color: .orange)
+                }
+            }
+            .padding(.top, 2)
         }
-        if isCompleted {
-            Text("Completed")
+    }
+
+    private func statusBadge(icon: String, text: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .semibold))
+            Text(text)
                 .font(.caption2)
-                .foregroundStyle(.green)
+                .fontWeight(.medium)
         }
-        if isMarked {
-            Text("Marked")
-                .font(.caption2)
-                .foregroundStyle(.orange)
-        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.12), in: Capsule())
     }
 
     private var iconName: String {

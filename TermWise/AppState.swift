@@ -7,6 +7,7 @@ import Combine
 final class AppState: ObservableObject {
     private let repository: AppRepository
     private var cancellables = Set<AnyCancellable>()
+    private var fullyPaidToastDismissTask: Task<Void, Never>?
 
     // Core profile and goals
     @Published var userFirstName: String = "Piere"
@@ -43,9 +44,14 @@ final class AppState: ObservableObject {
     @Published var pinnedTransactionIds: Set<UUID> = []
     @Published var monthlyNotes: [String: String] = [:]
     @Published var hiddenBudgetItemIdsByMonth: [String: Set<UUID>] = [:]
+    @Published var availableToBudgetByMonth: [String: Double] = [:]
     @Published var fixedBillActualOverridesByMonth: [String: [UUID: Double]] = [:]
     @Published var fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]] = [:]
     @Published var pendingUndo: PendingUndoBar?
+    /// Shown when a fixed bill becomes fully paid (`actual >= planned`) after transactions change; cleared after a short delay.
+    @Published var fullyPaidBillToast: String?
+    /// Set right after the user adds an income transaction so the UI can ask whether to assign it to the budget.
+    @Published var pendingIncomePrompt: PendingIncomePrompt?
 
     // Simple local history for charts in profile panel
     @Published var monthlyHistory: [MonthlySummary] = [
@@ -66,8 +72,78 @@ final class AppState: ObservableObject {
         }
     }
 
-    var totalPlannedSpend: Double {
-        TransactionTotalsService.totalPlannedSpend(budgetItems: budgetItems)
+    /// Sum of planned amounts for categories active this month (not hidden). Fixed, variable, and savings lines all count.
+    var totalBudgeted: Double {
+        FinanceBudgetAllocation.calculateTotalBudgeted(
+            budgetItems: budgetItems,
+            hiddenBudgetItemIds: hiddenBudgetItemIdsByMonth[currentMonthKey] ?? []
+        )
+    }
+
+    /// Same as `totalBudgeted` (legacy name used in some views).
+    var totalPlannedSpend: Double { totalBudgeted }
+
+    /// Income transactions dated in the current calendar month.
+    var totalIncome: Double {
+        FinanceBudgetAllocation.calculateTotalIncome(
+            transactions: transactions,
+            referenceDate: Date(),
+            calendar: Calendar.current
+        )
+    }
+
+    /// Portion of income the user allocates to budgeting; explicit per-month override or defaults to `totalIncome`, then profile income.
+    var availableToBudget: Double {
+        FinanceBudgetAllocation.calculateAvailableToBudget(
+            explicitByMonth: availableToBudgetByMonth,
+            monthKey: currentMonthKey,
+            totalIncome: totalIncome,
+            fallbackExpectedMonthlyIncome: monthlyIncome
+        )
+    }
+
+    /// `availableToBudget - totalBudgeted` (positive = reserve / headroom in the envelope sense; negative = over-allocated).
+    var unallocatedIncome: Double {
+        FinanceBudgetAllocation.calculateUnallocatedIncome(
+            availableToBudget: availableToBudget,
+            totalBudgeted: totalBudgeted
+        )
+    }
+
+    /// `totalBudgeted - availableToBudget`. Positive means over-allocated.
+    var budgetAllocationDifference: Double {
+        FinanceBudgetAllocation.calculateBudgetDifference(
+            totalBudgeted: totalBudgeted,
+            availableToBudget: availableToBudget
+        )
+    }
+
+    /// Income received this month that the user has *not* assigned to the budget. Always >= 0.
+    var reserveNotBudgeted: Double {
+        FinanceBudgetAllocation.calculateReserveNotBudgeted(
+            totalIncome: totalIncome,
+            availableToBudget: availableToBudget
+        )
+    }
+
+    /// Money preserved this month by spending less than the planned envelope. Capped at 0.
+    var budgetCushion: Double {
+        FinanceBudgetAllocation.calculateBudgetCushionThisMonth(
+            totalBudgeted: totalBudgeted,
+            totalBudgetCountedSpend: totalBudgetCountedSpend
+        )
+    }
+
+    func setAvailableToBudgetForCurrentMonth(_ value: Double) {
+        availableToBudgetByMonth[currentMonthKey] = max(0, value)
+    }
+
+    /// Locks in the current `availableToBudget` as an explicit override for the current month.
+    /// Called before a new income transaction so subsequent income additions don't auto-grow the envelope.
+    private func snapshotAvailableToBudgetIfNeeded() {
+        if availableToBudgetByMonth[currentMonthKey] == nil {
+            availableToBudgetByMonth[currentMonthKey] = availableToBudget
+        }
     }
 
     var totalActualSpend: Double {
@@ -167,6 +243,16 @@ final class AppState: ObservableObject {
         BudgetPlanningService.upcomingUrgentBills(budgetItems: budgetItems)
     }
 
+    /// Structured urgent-bill messages for the dashboard (paid bills excluded). Uses transactions to compute remaining amount.
+    var urgentBillMessages: [BudgetPlanningService.UrgentBillMessage] {
+        BudgetPlanningService.urgentBillMessages(
+            budgetItems: budgetItems,
+            transactions: transactions,
+            now: Date(),
+            calendar: Calendar.current
+        )
+    }
+
     var awarenessMessages: [String] {
         SpendingAnalyticsService.awarenessMessages(budgetItems: budgetItems, transactions: transactions)
     }
@@ -206,6 +292,7 @@ final class AppState: ObservableObject {
         billId: UUID? = nil,
         undoable: Bool = false
     ) -> TransactionItem {
+        let beforePaid = fixedBillsFullyPaidSnapshot()
         let now = Date()
         let item = TransactionItem(
             id: UUID(),
@@ -222,28 +309,81 @@ final class AppState: ObservableObject {
             undoable: undoable
         )
         transactions.insert(item, at: 0)
-        reconcileFixedBillPaidStates()
+        reconcileFixedBillPaidStates(previousFullyPaid: beforePaid)
         return item
     }
 
+    /// Adds an **income** transaction without auto-growing `availableToBudget`, then queues a prompt
+    /// asking the user whether to assign it to the budget.
+    ///
+    /// - Snapshots the current `availableToBudget` as an explicit override (if missing) so this and
+    ///   future income additions cannot silently inflate the envelope.
+    /// - Creates the income transaction.
+    /// - Sets `pendingIncomePrompt` so the UI can present the choice.
+    @discardableResult
+    func addIncomeAndPromptIfNeeded(
+        amount: Double,
+        category: String,
+        note: String,
+        savedApplied: Double = 0
+    ) -> TransactionItem? {
+        guard amount > 0 else { return nil }
+        snapshotAvailableToBudgetIfNeeded()
+        let item = addTransaction(
+            amount: amount,
+            category: category,
+            note: note,
+            type: .income,
+            savedApplied: savedApplied
+        )
+        pendingIncomePrompt = PendingIncomePrompt(
+            transactionId: item.id,
+            amount: amount,
+            categoryName: category
+        )
+        return item
+    }
+
+    /// Apply the income to the budget envelope: increases `availableToBudget` by the prompted amount.
+    func confirmAddIncomeToBudget() {
+        guard let prompt = pendingIncomePrompt else { return }
+        let newAvailable = availableToBudget + prompt.amount
+        setAvailableToBudgetForCurrentMonth(newAvailable)
+        pendingIncomePrompt = nil
+    }
+
+    /// Keep the income outside the budget; `availableToBudget` stays unchanged. Reserve grows.
+    func keepIncomeAsReserve() {
+        // Snapshot already happened; no further mutation needed.
+        pendingIncomePrompt = nil
+    }
+
+    /// Dismisses the prompt without changing budget assignment (equivalent to keeping as reserve).
+    func dismissIncomePrompt() {
+        pendingIncomePrompt = nil
+    }
+
     func deleteTransaction(id: UUID) {
+        let beforePaid = fixedBillsFullyPaidSnapshot()
         transactions.removeAll { $0.id == id }
         pinnedTransactionIds.remove(id)
-        reconcileFixedBillPaidStates()
+        reconcileFixedBillPaidStates(previousFullyPaid: beforePaid)
     }
 
     @discardableResult
     func removeTransaction(id: UUID) -> TransactionItem? {
+        let beforePaid = fixedBillsFullyPaidSnapshot()
         pinnedTransactionIds.remove(id)
         guard let index = transactions.firstIndex(where: { $0.id == id }) else { return nil }
         let removed = transactions.remove(at: index)
-        reconcileFixedBillPaidStates()
+        reconcileFixedBillPaidStates(previousFullyPaid: beforePaid)
         return removed
     }
 
     func restoreTransaction(_ transaction: TransactionItem) {
+        let beforePaid = fixedBillsFullyPaidSnapshot()
         transactions.insert(transaction, at: 0)
-        reconcileFixedBillPaidStates()
+        reconcileFixedBillPaidStates(previousFullyPaid: beforePaid)
     }
 
     func presentRemovedTransactionUndo(_ removed: TransactionItem) {
@@ -286,8 +426,36 @@ final class AppState: ObservableObject {
         dueDate: Date?,
         isPaid: Bool
     ) {
+        addBudgetItem(
+            name: name,
+            planned: planned,
+            budgetType: budgetType,
+            frequency: frequency,
+            dueDay: dueDay,
+            dueWeekday: dueWeekday,
+            dueDate: dueDate,
+            isPaid: isPaid,
+            targetAmount: nil,
+            deadline: nil
+        )
+    }
+
+    /// Generic budget-item creator (variable / fixed / savings).
+    func addBudgetItem(
+        name: String,
+        planned: Double,
+        budgetType: BudgetType,
+        frequency: PaymentFrequency,
+        dueDay: Int?,
+        dueWeekday: Int?,
+        dueDate: Date?,
+        isPaid: Bool = false,
+        targetAmount: Double? = nil,
+        deadline: Date? = nil
+    ) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, planned >= 0 else { return }
+        let beforePaid = fixedBillsFullyPaidSnapshot()
         budgetItems.append(
             BudgetItem(
                 id: UUID(),
@@ -298,10 +466,43 @@ final class AppState: ObservableObject {
                 dueDay: dueDay,
                 dueWeekday: dueWeekday,
                 dueDate: dueDate,
-                isPaid: isPaid
+                isPaid: isPaid,
+                targetAmount: targetAmount,
+                deadline: deadline
             )
         )
-        reconcileFixedBillPaidStates()
+        reconcileFixedBillPaidStates(previousFullyPaid: beforePaid)
+    }
+
+    /// In-place edit of an existing budget item.
+    func updateBudgetItem(
+        id: UUID,
+        name: String,
+        planned: Double,
+        budgetType: BudgetType,
+        frequency: PaymentFrequency,
+        dueDay: Int?,
+        dueWeekday: Int?,
+        dueDate: Date?,
+        targetAmount: Double? = nil,
+        deadline: Date? = nil
+    ) {
+        guard let index = budgetItems.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, planned >= 0 else { return }
+        let beforePaid = fixedBillsFullyPaidSnapshot()
+        var item = budgetItems[index]
+        item.category = trimmed
+        item.planned = planned
+        item.budgetType = budgetType
+        item.frequency = frequency
+        item.dueDay = dueDay
+        item.dueWeekday = dueWeekday
+        item.dueDate = dueDate
+        item.targetAmount = targetAmount
+        item.deadline = deadline
+        budgetItems[index] = item
+        reconcileFixedBillPaidStates(previousFullyPaid: beforePaid)
     }
 
     func hideBudgetItemForCurrentMonth(_ id: UUID) {
@@ -416,6 +617,44 @@ final class AppState: ObservableObject {
         )
     }
 
+    // MARK: - Variable spending pace (chart + risk badge)
+
+    /// Variable-only pace summary used by the Spending Trend chart and risk badge.
+    /// Fixed/recurring bills are excluded; they are tracked via `FixedBillSchedule`.
+    var variableSpendingPace: VariableSpendingPace.Result {
+        VariableSpendingPace.evaluate(
+            budgetItems: budgetItems,
+            transactions: transactions,
+            currentDayOfMonth: currentDayOfMonth,
+            daysInMonth: daysInCurrentMonth,
+            calendar: Calendar.current,
+            now: Date()
+        )
+    }
+
+    /// Cumulative variable expenses per day, day 1...currentDayOfMonth (chart blue line).
+    func dailyVariableActualCumulative() -> [Double] {
+        VariableSpendingPace.dailyVariableActualCumulative(
+            transactions: transactions,
+            budgetItems: budgetItems,
+            currentDayOfMonth: currentDayOfMonth,
+            calendar: Calendar.current,
+            now: Date()
+        )
+    }
+
+    /// Per-day projection used when scrubbing the Spending Trend chart. Variable-only.
+    func projectedVariableAmountForDay(dayNumber: Int) -> Double {
+        let cumulative = dailyVariableActualCumulative()
+        return SpendingAnalyticsService.projectedAmountForDay(
+            dayNumber: dayNumber,
+            dailyActualCumulative: cumulative,
+            currentDayOfMonth: currentDayOfMonth,
+            daysInCurrentMonth: daysInCurrentMonth,
+            projectedEndOfMonthSpend: variableSpendingPace.projectedMonthEndSpend
+        )
+    }
+
     func apply(onboardingData: OnboardingData) {
         currentTerm = onboardingData.currentTerm
         monthlyIncome = onboardingData.monthlyIncome
@@ -429,7 +668,7 @@ final class AppState: ObservableObject {
     }
 
     func suggestedMonthlyBudgetFromGoals() -> Double {
-        max(0, monthlyIncome * (1 - desiredSavingsRate / 100))
+        max(0, availableToBudget * (1 - desiredSavingsRate / 100))
     }
 
     func recalculateEstimatedBudget() {
@@ -467,6 +706,7 @@ final class AppState: ObservableObject {
             hiddenBudgetItemIdsByMonth: hiddenBudgetItemIdsByMonth,
             fixedBillActualOverridesByMonth: fixedBillActualOverridesByMonth,
             fixedBillPaymentTransactionIdsByMonth: fixedBillPaymentTransactionIdsByMonth,
+            availableToBudgetByMonth: availableToBudgetByMonth,
             budgetItems: budgetItems,
             transactions: transactions
         )
@@ -495,20 +735,73 @@ final class AppState: ObservableObject {
         pinnedTransactionIds = decoded.pinnedTransactionIds
         monthlyNotes = decoded.monthlyNotes
         hiddenBudgetItemIdsByMonth = decoded.hiddenBudgetItemIdsByMonth
+        availableToBudgetByMonth = decoded.availableToBudgetByMonth
         fixedBillActualOverridesByMonth = decoded.fixedBillActualOverridesByMonth
         fixedBillPaymentTransactionIdsByMonth = decoded.fixedBillPaymentTransactionIdsByMonth
         budgetItems = migratedBudgetItems
         transactions = decoded.transactions
-        reconcileFixedBillPaidStates()
+        reconcileFixedBillPaidStates(previousFullyPaid: nil)
     }
 
-    private func reconcileFixedBillPaidStates() {
+    /// For each fixed bill, whether `actual >= planned` for the current month (transaction-derived).
+    private func fixedBillsFullyPaidSnapshot() -> [UUID: Bool] {
+        let calendar = Calendar.current
+        let now = Date()
+        var map: [UUID: Bool] = [:]
+        for item in budgetItems where item.budgetType == .fixed {
+            let actual = BudgetSpendCalculator.actualPaidAmount(
+                for: item,
+                transactions: transactions,
+                now: now,
+                calendar: calendar
+            )
+            map[item.id] = actual >= item.planned
+        }
+        return map
+    }
+
+    private func reconcileFixedBillPaidStates(previousFullyPaid: [UUID: Bool]? = nil) {
         FixedBillPaidSync.reconcile(
             budgetItems: &budgetItems,
             transactions: transactions,
             now: Date(),
             calendar: Calendar.current
         )
+        guard let previous = previousFullyPaid else { return }
+        publishFullyPaidTransitionToasts(previousFullyPaid: previous)
+    }
+
+    private func publishFullyPaidTransitionToasts(previousFullyPaid: [UUID: Bool]) {
+        let calendar = Calendar.current
+        let now = Date()
+        var categories: [String] = []
+        for item in budgetItems where item.budgetType == .fixed {
+            let actual = BudgetSpendCalculator.actualPaidAmount(
+                for: item,
+                transactions: transactions,
+                now: now,
+                calendar: calendar
+            )
+            let nowFullyPaid = actual >= item.planned
+            let wasFullyPaid = previousFullyPaid[item.id] ?? false
+            if !wasFullyPaid && nowFullyPaid {
+                categories.append(item.category)
+            }
+        }
+        guard !categories.isEmpty else { return }
+        let message: String
+        if categories.count == 1 {
+            message = "Fully paid \(categories[0])"
+        } else {
+            message = "Fully paid \(categories.joined(separator: ", "))"
+        }
+        fullyPaidBillToast = message
+        fullyPaidToastDismissTask?.cancel()
+        fullyPaidToastDismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            self?.fullyPaidBillToast = nil
+        }
     }
 }
 

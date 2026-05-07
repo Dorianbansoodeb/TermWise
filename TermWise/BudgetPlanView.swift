@@ -2,57 +2,41 @@ import SwiftUI
 
 struct BudgetPlanView: View {
     @EnvironmentObject private var appState: AppState
-    @FocusState private var focusedCategoryId: UUID?
-    @State private var editingCategoryIds: Set<UUID> = []
     @State private var showingAddTransactionSheet = false
-    @State private var newCategoryName: String = ""
-    @State private var newCategoryAmount: String = ""
-    @State private var newCategoryBudgetType: BudgetType = .variable
-    @State private var newCategoryFrequency: PaymentFrequency = .none
-    @State private var newCategoryDueDay: Int = 1
-    @State private var newCategoryDueWeekday: Int = 2
-    @State private var newCategoryDueDate: Date = Date()
-    @State private var fullyPaidToast: String?
+    @State private var budgetEditor: BudgetItemEditorContext?
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                summaryCard
-                tuitionSavingsCard
+                budgetEnvelopeCard
+                monthlySnapshotCard
 
-                sectionHeader("Recurring Bills / Fixed Expenses")
-                ForEach(fixedItemIndices, id: \.self) { index in
-                    budgetCategoryCard(item: $appState.budgetItems[index])
+                if !fixedItemIndices.isEmpty {
+                    sectionHeader("Recurring Bills")
+                    ForEach(fixedItemIndices, id: \.self) { index in
+                        recurringBillCard(item: appState.budgetItems[index])
+                    }
                 }
 
-                sectionHeader("Variable Spending")
-                ForEach(variableItemIndices, id: \.self) { index in
-                    budgetCategoryCard(item: $appState.budgetItems[index])
+                if !variableItemIndices.isEmpty {
+                    sectionHeader("Variable Spending")
+                    ForEach(variableItemIndices, id: \.self) { index in
+                        variableSpendingCard(item: appState.budgetItems[index])
+                    }
                 }
 
-                addCategoryCard
+                if !savingsItemIndices.isEmpty {
+                    sectionHeader("Savings Goals")
+                    ForEach(savingsItemIndices, id: \.self) { index in
+                        savingsGoalCard(item: appState.budgetItems[index])
+                    }
+                }
+
+                addBudgetItemButton
             }
             .padding()
+            .padding(.bottom, 24)
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if let toast = fullyPaidToast {
-                Text(toast)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.green)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 12)
-                    .background(Color.green.opacity(0.14))
-                    .overlay(alignment: .bottom) {
-                        Rectangle()
-                            .fill(Color.green.opacity(0.35))
-                            .frame(height: 1)
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: fullyPaidToast)
         .background(Color(.systemGroupedBackground))
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Budget Plan")
@@ -68,23 +52,11 @@ struct BudgetPlanView: View {
                             appState.draftTransactionType = .income
                             showingAddTransactionSheet = true
                         }
-                        Button("Add Category", systemImage: "square.grid.2x2.badge.plus") {
-                            focusedCategoryId = nil
-                        }
-                        Button("Add Recurring Bill", systemImage: "calendar.badge.plus") {
-                            newCategoryBudgetType = .fixed
-                            newCategoryFrequency = .monthly
-                        }
                     } label: {
                         Image(systemName: "plus")
                     }
-
                     AppOverflowMenu()
                 }
-            }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focusedCategoryId = nil }
             }
         }
         .sheet(isPresented: $showingAddTransactionSheet) {
@@ -95,19 +67,88 @@ struct BudgetPlanView: View {
                 .environmentObject(appState)
             }
         }
+        .sheet(item: $budgetEditor) { context in
+            BudgetItemEditorSheet(context: context)
+                .environmentObject(appState)
+        }
     }
 
-    private var summaryCard: some View {
+    // MARK: - Cards
+
+    private var budgetEnvelopeCard: some View {
+        let unallocated = FinanceBudgetAllocation.unallocatedRow(
+            availableToBudget: appState.availableToBudget,
+            totalBudgeted: appState.totalBudgeted
+        )
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Budget Envelope")
+                .font(.headline)
+
+            metricRow("Total Income", appState.totalIncome)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Available to Budget This Month")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField(
+                    "Amount",
+                    value: Binding(
+                        get: { appState.availableToBudget },
+                        set: { appState.setAvailableToBudgetForCurrentMonth($0) }
+                    ),
+                    format: .number
+                )
+                .keyboardType(.decimalPad)
+                .textFieldStyle(.roundedBorder)
+            }
+
+            if appState.reserveNotBudgeted > 0 {
+                metricRow("Reserve / Not Budgeted", appState.reserveNotBudgeted)
+            }
+            metricRow("Total Budgeted", appState.totalBudgeted)
+            metricRow(
+                unallocated.label,
+                unallocated.value,
+                emphasize: true,
+                forceColor: unallocated.isOver ? .red : .green
+            )
+
+            if appState.availableToBudget > appState.totalIncome && appState.totalIncome > 0 {
+                Text("You are budgeting more than your recorded income.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            if unallocated.isOver {
+                Text("Your budget is over your available amount by \(unallocated.value.formatted(appState.currencyFormatter)).")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if unallocated.value > 0 {
+                Text("You have \(unallocated.value.formatted(appState.currencyFormatter)) left unallocated.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+    }
+
+    private var monthlySnapshotCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Monthly Snapshot")
                 .font(.headline)
-            metricRow("Planned Total", appState.totalPlannedSpend)
-            metricRow("Actual Spend (Budget Counted)", appState.totalBudgetCountedSpend)
+            metricRow("Total Budgeted", appState.totalBudgeted)
+            metricRow("Actual Spend", appState.totalBudgetCountedSpend)
             if appState.totalSavedApplied > 0 {
-                metricRow("Used from Saved", appState.totalSavedApplied)
+                metricRow("Used from Cushion", appState.totalSavedApplied)
                 metricRow("Gross Spent", appState.totalActualSpend)
             }
-            metricRow("Delta", appState.totalPlannedSpend - appState.totalBudgetCountedSpend, emphasize: true)
+            metricRow(
+                "Delta",
+                appState.totalBudgeted - appState.totalBudgetCountedSpend,
+                emphasize: true
+            )
         }
         .padding()
         .background(Color(.secondarySystemBackground))
@@ -115,216 +156,63 @@ struct BudgetPlanView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 
-    private var tuitionSavingsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Tuition/Savings Goal")
-                .font(.headline)
-            Text("Goal: \(appState.tuitionGoal.formatted(appState.currencyFormatter))")
-                .font(.subheadline)
-            Text("Projected monthly savings: \(appState.projectedSavingsThisMonth.formatted(appState.currencyFormatter))")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
-    }
+    // MARK: - Recurring bill card (Item 12)
 
-    private func markFixedBillFullyPaidIfNeeded(billId: UUID, billCategory: String) {
-        guard let bill = appState.budgetItems.first(where: { $0.id == billId && $0.budgetType == .fixed }) else { return }
-        let preActual = appState.actualPaidAmount(for: bill)
-        let remaining = bill.planned - preActual
-        guard remaining > 0 else { return }
-        guard let txn = appState.markFixedBillRemainingPaid(billId: billId) else { return }
-        appState.presentMarkAsPaidUndo(
-            billId: billId,
-            transactionId: txn.id,
-            addedAmount: remaining,
-            billCategoryName: billCategory
-        )
-        fullyPaidToast = "Fully paid \(billCategory)"
-        Task {
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
-            await MainActor.run { fullyPaidToast = nil }
-        }
-    }
-
-    private func budgetCategoryCard(item: Binding<BudgetItem>) -> some View {
-        let id = item.wrappedValue.id
-        let actual = item.wrappedValue.budgetType == .fixed
-            ? appState.actualPaidAmount(for: item.wrappedValue)
-            : appState.actualAmount(for: item.wrappedValue.category)
-        let isEditing = editingCategoryIds.contains(id)
-        let dueDateText = getDueDateText(item.wrappedValue)
-        let isFixed = item.wrappedValue.budgetType == .fixed
-        let remaining = max(0, item.wrappedValue.planned - actual)
-        let fixedStatus = appState.fixedBillStatus(for: item.wrappedValue)
+    private func recurringBillCard(item: BudgetItem) -> some View {
+        let actual = appState.actualPaidAmount(for: item)
+        let status = appState.fixedBillStatus(for: item)
+        let isFullyPaid = actual >= item.planned
+        let dueLabel = dueLabel(for: item)
+        let progressTint: Color = isFullyPaid ? .green : (actual > item.planned ? .red : .blue)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                if isEditing {
-                    TextField("Category", text: item.category)
-                        .font(.headline)
-                } else {
-                    Text(item.wrappedValue.category)
-                        .font(.headline)
-                }
+                Text(item.category)
+                    .font(.headline)
                 Spacer()
-                if isFixed {
-                    Text(fixedStatusText(fixedStatus))
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(fixedStatusColor(fixedStatus).opacity(0.15))
-                        .clipShape(Capsule())
-                } else {
-                    Text(actual > item.wrappedValue.planned ? "Over Budget" : "On Track")
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background((actual > item.wrappedValue.planned ? Color.red : Color.green).opacity(0.15))
-                        .clipShape(Capsule())
-                }
+                statusBadge(status)
             }
 
             ProgressView(
-                value: min(actual, item.wrappedValue.planned),
-                total: max(1, item.wrappedValue.planned)
+                value: min(actual, item.planned),
+                total: max(1, item.planned)
             )
-                .tint(
-                    actual > item.wrappedValue.planned
-                        ? .red
-                        : (isFixed && actual >= item.wrappedValue.planned ? .green : .blue)
-                )
+            .tint(progressTint)
 
             HStack {
                 Text("Planned")
                 Spacer()
-                if isEditing {
-                    TextField("0", value: item.planned, format: .number)
-                        .multilineTextAlignment(.trailing)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedCategoryId, equals: item.wrappedValue.id)
-                } else {
-                    Text(item.wrappedValue.planned.formatted(appState.currencyFormatter))
-                        .foregroundStyle(.secondary)
-                }
+                Text(item.planned.formatted(appState.currencyFormatter))
+                    .foregroundStyle(.secondary)
             }
-
-            if isFixed, let dueDateText {
+            if let dueLabel {
                 HStack {
                     Text("Due date")
-                        .foregroundStyle(.secondary)
                     Spacer()
-                    if isEditing {
-                        VStack(alignment: .trailing, spacing: 8) {
-                            Picker("Frequency", selection: Binding(
-                                get: { item.wrappedValue.frequency },
-                                set: { item.wrappedValue.frequency = $0 }
-                            )) {
-                                ForEach(PaymentFrequency.allCases.filter { $0 != .none }) { frequency in
-                                    Text(frequency.label).tag(frequency)
-                                }
-                            }
-                            .pickerStyle(.menu)
-
-                            if item.wrappedValue.frequency == .monthly {
-                                Stepper("Due day: \(item.wrappedValue.dueDay ?? 1)", value: Binding(
-                                    get: { item.wrappedValue.dueDay ?? 1 },
-                                    set: { item.wrappedValue.dueDay = $0 }
-                                ), in: 1...31)
-                            }
-                            if item.wrappedValue.frequency == .weekly || item.wrappedValue.frequency == .biweekly {
-                                Picker("Weekday", selection: Binding(
-                                    get: { item.wrappedValue.dueWeekday ?? 2 },
-                                    set: { item.wrappedValue.dueWeekday = $0 }
-                                )) {
-                                    ForEach(2...8, id: \.self) { weekday in
-                                        let normalized = weekday == 8 ? 1 : weekday
-                                        Text(weekdayName(normalized)).tag(normalized)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                            }
-                            if item.wrappedValue.frequency == .oneTime {
-                                DatePicker(
-                                    "One-time date",
-                                    selection: Binding(
-                                        get: { item.wrappedValue.dueDate ?? Date() },
-                                        set: { item.wrappedValue.dueDate = $0 }
-                                    ),
-                                    displayedComponents: .date
-                                )
-                                .labelsHidden()
-                            }
-                            if actual < item.wrappedValue.planned {
-                                Button("Mark as Paid") {
-                                    markFixedBillFullyPaidIfNeeded(
-                                        billId: id,
-                                        billCategory: item.wrappedValue.category
-                                    )
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .font(.caption)
-                            }
-                        }
-                    }
-                    Text(dueDateText)
-                        .font(.subheadline)
+                    Text(dueLabel)
+                        .foregroundStyle(.secondary)
                 }
             }
-
             HStack {
                 Text("Actual")
                 Spacer()
                 Text(actual.formatted(appState.currencyFormatter))
-                    .foregroundStyle(actual > item.wrappedValue.planned ? .red : .secondary)
+                    .foregroundStyle(actual > item.planned ? .red : .secondary)
             }
 
-            if isFixed {
-                HStack {
-                    Text("Status")
-                    Spacer()
-                    Text(fixedStatusText(fixedStatus))
-                        .foregroundStyle(fixedStatusColor(fixedStatus))
-                }
-                HStack {
-                    Spacer()
-                    if actual >= item.wrappedValue.planned {
-                        Label("Paid", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.subheadline)
-                    } else {
-                        Button("Mark as Paid") {
-                            markFixedBillFullyPaidIfNeeded(
-                                billId: id,
-                                billCategory: item.wrappedValue.category
-                            )
-                        }
-                        .buttonStyle(.borderedProminent)
+            HStack(spacing: 8) {
+                if !isFullyPaid {
+                    Button("Mark as Paid") {
+                        markFixedBillFullyPaidIfNeeded(billId: item.id, billCategory: item.category)
                     }
+                    .buttonStyle(.borderedProminent)
                 }
-            } else {
-                Text("\(BudgetProgressMetrics.percentUsed(actual: actual, planned: item.wrappedValue.planned))% used")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack {
-                    Text("Remaining")
-                    Spacer()
-                    Text(remaining.formatted(appState.currencyFormatter))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            HStack {
-                Button("Delete This Month", role: .destructive) {
-                    appState.hideBudgetItemForCurrentMonth(id)
-                    editingCategoryIds.remove(id)
+                Spacer()
+                Button("Reset Payment", role: .destructive) {
+                    appState.hideBudgetItemForCurrentMonth(item.id)
                 }
                 .buttonStyle(.bordered)
-                Spacer()
-                Button(isEditing ? "Done" : "Edit") {
-                    toggleEditing(for: id)
+                Button("Edit") {
+                    budgetEditor = BudgetItemEditorContext(mode: .edit(item.id), defaultType: .fixed)
                 }
                 .buttonStyle(.bordered)
             }
@@ -335,15 +223,171 @@ struct BudgetPlanView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 
-    private func metricRow(_ label: String, _ value: Double, emphasize: Bool = false) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            Text(value.formatted(appState.currencyFormatter))
-                .foregroundStyle(emphasize ? (value < 0 ? .red : .green) : .secondary)
-                .fontWeight(emphasize ? .semibold : .regular)
+    // MARK: - Variable spending card
+
+    private func variableSpendingCard(item: BudgetItem) -> some View {
+        let actual = appState.actualAmount(for: item.category)
+        let percentUsed = BudgetProgressMetrics.percentUsed(actual: actual, planned: item.planned)
+        let remaining = max(0, item.planned - actual)
+        let isOver = actual > item.planned
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(item.category)
+                    .font(.headline)
+                Spacer()
+                Text(isOver ? "Over Budget" : "On Track")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background((isOver ? Color.red : Color.green).opacity(0.15))
+                    .foregroundStyle(isOver ? .red : .green)
+                    .clipShape(Capsule())
+            }
+
+            ProgressView(
+                value: min(actual, item.planned),
+                total: max(1, item.planned)
+            )
+            .tint(isOver ? .red : .blue)
+
+            HStack {
+                Text("Planned")
+                Spacer()
+                Text(item.planned.formatted(appState.currencyFormatter))
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("Actual")
+                Spacer()
+                Text(actual.formatted(appState.currencyFormatter))
+                    .foregroundStyle(isOver ? .red : .secondary)
+            }
+            HStack {
+                Text("Remaining")
+                Spacer()
+                Text(remaining.formatted(appState.currencyFormatter))
+                    .foregroundStyle(.secondary)
+            }
+            Text("\(percentUsed)% used")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Button("Reset This Month", role: .destructive) {
+                    appState.hideBudgetItemForCurrentMonth(item.id)
+                }
+                .buttonStyle(.bordered)
+                Spacer()
+                Button("Edit") {
+                    budgetEditor = BudgetItemEditorContext(mode: .edit(item.id), defaultType: .variable)
+                }
+                .buttonStyle(.bordered)
+            }
         }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
+
+    // MARK: - Savings goal card
+
+    private func savingsGoalCard(item: BudgetItem) -> some View {
+        let actual = appState.actualPaidAmount(for: item)
+        let status = appState.fixedBillStatus(for: item)
+        let isFullyPaid = actual >= item.planned
+        let progressTint: Color = isFullyPaid ? .green : .blue
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(item.category)
+                    .font(.headline)
+                Spacer()
+                statusBadge(status)
+            }
+
+            ProgressView(
+                value: min(actual, item.planned),
+                total: max(1, item.planned)
+            )
+            .tint(progressTint)
+
+            HStack {
+                Text("Monthly contribution")
+                Spacer()
+                Text(item.planned.formatted(appState.currencyFormatter))
+                    .foregroundStyle(.secondary)
+            }
+            if let target = item.targetAmount, target > 0 {
+                HStack {
+                    Text("Goal target")
+                    Spacer()
+                    Text(target.formatted(appState.currencyFormatter))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let deadline = item.deadline {
+                HStack {
+                    Text("Deadline")
+                    Spacer()
+                    Text(deadline.formatted(date: .abbreviated, time: .omitted))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                Text("Contributed this month")
+                Spacer()
+                Text(actual.formatted(appState.currencyFormatter))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                if !isFullyPaid {
+                    Button("Mark as Paid") {
+                        markFixedBillFullyPaidIfNeeded(billId: item.id, billCategory: item.category)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                Spacer()
+                Button("Reset Payment", role: .destructive) {
+                    appState.hideBudgetItemForCurrentMonth(item.id)
+                }
+                .buttonStyle(.bordered)
+                Button("Edit") {
+                    budgetEditor = BudgetItemEditorContext(mode: .edit(item.id), defaultType: .savings)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+    }
+
+    // MARK: - Add button + sections
+
+    private var addBudgetItemButton: some View {
+        Button {
+            budgetEditor = BudgetItemEditorContext(mode: .add, defaultType: .variable)
+        } label: {
+            Label("Add Budget Item", systemImage: "plus.circle.fill")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+        }
+        .buttonStyle(.borderedProminent)
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.headline)
+            Spacer()
+        }
+        .padding(.top, 4)
+    }
+
+    // MARK: - Helpers
 
     private var fixedItemIndices: [Int] {
         appState.budgetItems.indices.filter {
@@ -359,115 +403,290 @@ struct BudgetPlanView: View {
         }
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.headline)
-            Spacer()
+    private var savingsItemIndices: [Int] {
+        appState.budgetItems.indices.filter {
+            appState.budgetItems[$0].budgetType == .savings &&
+            !appState.isBudgetItemHiddenForCurrentMonth(appState.budgetItems[$0].id)
         }
-        .padding(.top, 4)
     }
 
-    private var addCategoryCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Add Category / Recurring Bill")
-                .font(.headline)
+    private func metricRow(_ label: String, _ value: Double, emphasize: Bool = false, forceColor: Color? = nil) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value.formatted(appState.currencyFormatter))
+                .foregroundStyle(forceColor ?? (emphasize ? (value < 0 ? .red : .green) : .secondary))
+                .fontWeight(emphasize ? .semibold : .regular)
+        }
+    }
 
-            TextField("Category name", text: $newCategoryName)
-                .textFieldStyle(.roundedBorder)
+    private func dueLabel(for item: BudgetItem) -> String? {
+        guard let label = FixedBillSchedule.dueDayLabel(for: item) else { return nil }
+        switch item.frequency {
+        case .monthly: return "Monthly • \(label)"
+        case .weekly: return "Weekly • \(label)"
+        case .biweekly: return "Biweekly • \(label)"
+        case .oneTime: return "One-time • \(label)"
+        case .none: return nil
+        }
+    }
 
-            TextField("Monthly amount", text: $newCategoryAmount)
-                .keyboardType(.decimalPad)
-                .textFieldStyle(.roundedBorder)
+    private func statusBadge(_ status: FixedBillStatus) -> some View {
+        let text: String
+        let color: Color
+        switch status {
+        case .paid: text = "Paid"; color = .green
+        case .upcoming: text = "Upcoming"; color = .orange
+        case .overdue: text = "Overdue"; color = .red
+        }
+        return Text(text)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
 
-            Picker("Budget type", selection: $newCategoryBudgetType) {
-                ForEach(BudgetType.allCases) { type in
-                    Text(type.label).tag(type)
-                }
-            }
-            .pickerStyle(.menu)
+    private func markFixedBillFullyPaidIfNeeded(billId: UUID, billCategory: String) {
+        guard let bill = appState.budgetItems.first(where: { $0.id == billId }),
+              bill.budgetType == .fixed || bill.budgetType == .savings
+        else { return }
+        let preActual = appState.actualPaidAmount(for: bill)
+        let remaining = bill.planned - preActual
+        guard remaining > 0 else { return }
+        guard let txn = appState.markFixedBillRemainingPaid(billId: billId) else { return }
+        appState.presentMarkAsPaidUndo(
+            billId: billId,
+            transactionId: txn.id,
+            addedAmount: remaining,
+            billCategoryName: billCategory
+        )
+    }
+}
 
-            if newCategoryBudgetType == .fixed {
-                Picker("Payment frequency", selection: $newCategoryFrequency) {
-                    ForEach(PaymentFrequency.allCases.filter { $0 != .none }) { frequency in
-                        Text(frequency.label).tag(frequency)
+// MARK: - Add / edit sheet
+
+struct BudgetItemEditorContext: Identifiable {
+    enum Mode: Equatable {
+        case add
+        case edit(UUID)
+    }
+
+    let id = UUID()
+    let mode: Mode
+    let defaultType: BudgetType
+
+    var isEditing: Bool {
+        if case .edit = mode { return true }
+        return false
+    }
+}
+
+private struct BudgetItemEditorSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    let context: BudgetItemEditorContext
+
+    @State private var type: BudgetType = .variable
+    @State private var name: String = ""
+    @State private var amountText: String = ""
+    @State private var frequency: PaymentFrequency = .monthly
+    @State private var dueDay: Int = 1
+    @State private var dueWeekday: Int = 2
+    @State private var dueDate: Date = Date()
+    @State private var targetAmountText: String = ""
+    @State private var hasDeadline: Bool = false
+    @State private var deadlineDate: Date = Date()
+    @State private var didLoadInitialValues = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Type") {
+                    Picker("Type", selection: $type) {
+                        Text("Variable Spending").tag(BudgetType.variable)
+                        Text("Recurring Bill").tag(BudgetType.fixed)
+                        Text("Savings Goal").tag(BudgetType.savings)
                     }
+                    .pickerStyle(.segmented)
                 }
-                .pickerStyle(.menu)
 
-                if newCategoryFrequency == .monthly {
-                    Stepper("Due day: \(newCategoryDueDay)", value: $newCategoryDueDay, in: 1...31)
-                        .font(.subheadline)
+                Section(nameSectionTitle) {
+                    TextField(namePlaceholder, text: $name)
+                        .textInputAutocapitalization(.words)
+                    TextField(amountFieldLabel, text: $amountText)
+                        .keyboardType(.decimalPad)
                 }
-                if newCategoryFrequency == .weekly || newCategoryFrequency == .biweekly {
-                    Picker("Due weekday", selection: $newCategoryDueWeekday) {
-                        ForEach(2...8, id: \.self) { weekday in
-                            let normalized = weekday == 8 ? 1 : weekday
-                            Text(weekdayName(normalized)).tag(normalized)
+
+                if type == .fixed || type == .savings {
+                    Section("Schedule") {
+                        Picker("Frequency", selection: $frequency) {
+                            ForEach(PaymentFrequency.allCases.filter { $0 != .none }) { freq in
+                                Text(freq.label).tag(freq)
+                            }
+                        }
+                        if frequency == .monthly {
+                            Stepper("Due day: \(dueDay)", value: $dueDay, in: 1...31)
+                        }
+                        if frequency == .weekly || frequency == .biweekly {
+                            Picker("Weekday", selection: $dueWeekday) {
+                                ForEach(1...7, id: \.self) { weekday in
+                                    Text(weekdayName(weekday)).tag(weekday)
+                                }
+                            }
+                        }
+                        if frequency == .oneTime {
+                            DatePicker("Due date", selection: $dueDate, displayedComponents: .date)
                         }
                     }
-                    .pickerStyle(.menu)
                 }
-                if newCategoryFrequency == .oneTime {
-                    DatePicker("Due date", selection: $newCategoryDueDate, displayedComponents: .date)
+
+                if type == .savings {
+                    Section("Goal") {
+                        TextField("Target amount", text: $targetAmountText)
+                            .keyboardType(.decimalPad)
+                        Toggle("Set deadline", isOn: $hasDeadline.animation())
+                        if hasDeadline {
+                            DatePicker("Deadline", selection: $deadlineDate, displayedComponents: .date)
+                        }
+                    }
+                }
+
+                if context.isEditing {
+                    Section {
+                        Button(resetButtonTitle, role: .destructive) {
+                            if case .edit(let id) = context.mode {
+                                appState.hideBudgetItemForCurrentMonth(id)
+                                dismiss()
+                            }
+                        }
+                    }
                 }
             }
-
-            Button("Add Category") {
-                appState.addBudgetCategory(
-                    name: newCategoryName,
-                    planned: Double(newCategoryAmount) ?? 0,
-                    budgetType: newCategoryBudgetType,
-                    frequency: newCategoryBudgetType == .fixed ? newCategoryFrequency : .none,
-                    dueDay: (newCategoryBudgetType == .fixed && newCategoryFrequency == .monthly) ? newCategoryDueDay : nil,
-                    dueWeekday: (newCategoryBudgetType == .fixed && (newCategoryFrequency == .weekly || newCategoryFrequency == .biweekly)) ? newCategoryDueWeekday : nil,
-                    dueDate: (newCategoryBudgetType == .fixed && newCategoryFrequency == .oneTime) ? newCategoryDueDate : nil,
-                    isPaid: false
-                )
-                newCategoryName = ""
-                newCategoryAmount = ""
-                newCategoryBudgetType = .variable
-                newCategoryFrequency = .none
-                newCategoryDueDay = 1
-                newCategoryDueWeekday = 2
-                newCategoryDueDate = Date()
+            .navigationTitle(context.isEditing ? "Edit Budget Item" : "Add Budget Item")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        save()
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Double(newCategoryAmount) ?? -1) < 0)
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
-    }
-
-    private func toggleEditing(for id: UUID) {
-        if editingCategoryIds.contains(id) {
-            editingCategoryIds.remove(id)
-            focusedCategoryId = nil
-        } else {
-            editingCategoryIds.insert(id)
-            focusedCategoryId = id
+            .onAppear { loadInitialValuesIfNeeded() }
         }
     }
 
-    private func getDueDateText(_ item: BudgetItem) -> String? {
-        if item.budgetType != .fixed || item.frequency == .none { return nil }
-        switch item.frequency {
-        case .monthly:
-            guard let dueDay = item.dueDay else { return nil }
-            return "Monthly • Day \(dueDay)"
-        case .weekly:
-            guard let dueWeekday = item.dueWeekday else { return nil }
-            return "Weekly • \(weekdayName(dueWeekday))"
-        case .biweekly:
-            guard let dueWeekday = item.dueWeekday else { return nil }
-            return "Biweekly • \(weekdayName(dueWeekday))"
-        case .oneTime:
-            guard let dueDate = item.dueDate else { return nil }
-            return "One-time • \(dueDate.formatted(date: .abbreviated, time: .omitted))"
-        case .none:
-            return nil
+    private var nameSectionTitle: String {
+        switch type {
+        case .variable: return "Category"
+        case .fixed: return "Bill"
+        case .savings: return "Goal"
+        }
+    }
+
+    private var namePlaceholder: String {
+        switch type {
+        case .variable: return "e.g. Groceries, Eating Out"
+        case .fixed: return "e.g. Rent, Phone bill"
+        case .savings: return "e.g. Tuition Savings, Emergency Fund"
+        }
+    }
+
+    private var amountFieldLabel: String {
+        switch type {
+        case .variable: return "Monthly limit"
+        case .fixed: return "Monthly amount"
+        case .savings: return "Monthly contribution"
+        }
+    }
+
+    private var resetButtonTitle: String {
+        switch type {
+        case .variable: return "Reset This Month"
+        case .fixed, .savings: return "Reset Payment"
+        }
+    }
+
+    private var canSave: Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard let amount = Double(amountText), amount >= 0 else { return false }
+        return true
+    }
+
+    private func loadInitialValuesIfNeeded() {
+        guard !didLoadInitialValues else { return }
+        didLoadInitialValues = true
+
+        switch context.mode {
+        case .add:
+            type = context.defaultType
+            frequency = context.defaultType == .variable ? .none : .monthly
+        case .edit(let id):
+            guard let item = appState.budgetItems.first(where: { $0.id == id }) else { return }
+            type = item.budgetType
+            name = item.category
+            amountText = String(format: "%g", item.planned)
+            frequency = item.frequency == .none ? .monthly : item.frequency
+            dueDay = item.dueDay ?? 1
+            dueWeekday = item.dueWeekday ?? 2
+            dueDate = item.dueDate ?? Date()
+            if let target = item.targetAmount {
+                targetAmountText = String(format: "%g", target)
+            }
+            if let deadline = item.deadline {
+                hasDeadline = true
+                deadlineDate = deadline
+            }
+        }
+    }
+
+    private func save() {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let planned = Double(amountText) ?? 0
+        let savingsTarget = Double(targetAmountText)
+
+        let resolvedFrequency: PaymentFrequency = type == .variable ? .none : frequency
+        let resolvedDueDay = (type != .variable && resolvedFrequency == .monthly) ? dueDay : nil
+        let resolvedDueWeekday = (type != .variable && (resolvedFrequency == .weekly || resolvedFrequency == .biweekly)) ? dueWeekday : nil
+        let resolvedDueDate = (type != .variable && resolvedFrequency == .oneTime) ? dueDate : nil
+        let resolvedDeadline: Date? = (type == .savings && hasDeadline) ? deadlineDate : nil
+        let resolvedTarget: Double? = type == .savings ? savingsTarget : nil
+
+        switch context.mode {
+        case .add:
+            appState.addBudgetItem(
+                name: trimmed,
+                planned: planned,
+                budgetType: type,
+                frequency: resolvedFrequency,
+                dueDay: resolvedDueDay,
+                dueWeekday: resolvedDueWeekday,
+                dueDate: resolvedDueDate,
+                targetAmount: resolvedTarget,
+                deadline: resolvedDeadline
+            )
+        case .edit(let id):
+            appState.updateBudgetItem(
+                id: id,
+                name: trimmed,
+                planned: planned,
+                budgetType: type,
+                frequency: resolvedFrequency,
+                dueDay: resolvedDueDay,
+                dueWeekday: resolvedDueWeekday,
+                dueDate: resolvedDueDate,
+                targetAmount: resolvedTarget,
+                deadline: resolvedDeadline
+            )
         }
     }
 
@@ -475,22 +694,6 @@ struct BudgetPlanView: View {
         let symbols = Calendar.current.weekdaySymbols
         let index = max(0, min(symbols.count - 1, weekday - 1))
         return symbols[index]
-    }
-
-    private func fixedStatusText(_ status: FixedBillStatus) -> String {
-        switch status {
-        case .paid: return "Paid"
-        case .upcoming: return "Upcoming"
-        case .overdue: return "Overdue"
-        }
-    }
-
-    private func fixedStatusColor(_ status: FixedBillStatus) -> Color {
-        switch status {
-        case .paid: return .green
-        case .upcoming: return .orange
-        case .overdue: return .red
-        }
     }
 }
 

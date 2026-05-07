@@ -102,12 +102,12 @@ struct ProfilePanelView: View {
                 .fontWeight(.semibold)
 
             VStack(alignment: .leading) {
-                Text("Budget for month")
+                Text("Available to Budget This Month")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
                     TextField(
-                        "Limit",
+                        "Amount",
                         value: Binding(
                             get: { appState.manualMonthlyLimit ?? appState.monthlySpendingBudget },
                             set: { appState.manualMonthlyLimit = $0 }
@@ -123,7 +123,7 @@ struct ProfilePanelView: View {
             }
 
             VStack(alignment: .leading) {
-                Text("How much do you want to save from budget?")
+                Text("Target savings rate")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Picker("Savings target", selection: $selectedSavingsOption) {
@@ -186,7 +186,7 @@ struct ProfilePanelView: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
 
-            Text("Based on your income and savings rate, suggested monthly budget is \(appState.suggestedMonthlyBudgetFromGoals().formatted(appState.currencyFormatter)).")
+            Text("Based on your available to budget (not necessarily all income) and savings rate, suggested monthly spending limit is \(appState.suggestedMonthlyBudgetFromGoals().formatted(appState.currencyFormatter)).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

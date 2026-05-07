@@ -51,6 +51,7 @@ final class LocalCacheAppRepository: AppRepository {
             hiddenBudgetItemIdsByMonth: snapshot.hiddenBudgetItemIdsByMonth,
             fixedBillActualOverridesByMonth: snapshot.fixedBillActualOverridesByMonth,
             fixedBillPaymentTransactionIdsByMonth: snapshot.fixedBillPaymentTransactionIdsByMonth,
+            availableToBudgetByMonth: snapshot.availableToBudgetByMonth,
             budgetItems: items,
             transactions: snapshot.transactions
         )
@@ -76,6 +77,7 @@ final class LocalCacheAppRepository: AppRepository {
             hiddenBudgetItemIdsByMonth: snapshot.hiddenBudgetItemIdsByMonth,
             fixedBillActualOverridesByMonth: snapshot.fixedBillActualOverridesByMonth,
             fixedBillPaymentTransactionIdsByMonth: snapshot.fixedBillPaymentTransactionIdsByMonth,
+            availableToBudgetByMonth: snapshot.availableToBudgetByMonth,
             budgetItems: snapshot.budgetItems,
             transactions: items
         )

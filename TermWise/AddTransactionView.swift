@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AddTransactionView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
 
     let defaultType: TransactionType
     let onSave: () -> Void
@@ -129,6 +130,19 @@ struct AddTransactionView: View {
             Text("This seems like an irregular/large purchase. Would you like to use your saved amount towards this transaction?")
         }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 32, height: 32)
+                        .background(Color(.tertiarySystemFill))
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel("Close")
+            }
             ToolbarItem(placement: .primaryAction) {
                 AppOverflowMenu()
             }
@@ -154,13 +168,23 @@ struct AddTransactionView: View {
     }
 
     private func saveTransaction(amount: Double, category: String, savedApplied: Double) {
-        appState.addTransaction(
-            amount: amount,
-            category: category,
-            note: note,
-            type: type,
-            savedApplied: savedApplied
-        )
+        if type == .income {
+            // Routes through the prompt flow: locks in available-to-budget then asks the user.
+            appState.addIncomeAndPromptIfNeeded(
+                amount: amount,
+                category: category,
+                note: note,
+                savedApplied: savedApplied
+            )
+        } else {
+            appState.addTransaction(
+                amount: amount,
+                category: category,
+                note: note,
+                type: type,
+                savedApplied: savedApplied
+            )
+        }
         self.amount = ""
         self.category = ""
         self.customCategory = ""

@@ -7,6 +7,7 @@ struct ProfileView: View {
                 ProfilePanelView()
             }
             .padding()
+            .padding(.bottom, 24)
             .background(Color(.systemGroupedBackground))
         }
         .navigationTitle("Profile")
