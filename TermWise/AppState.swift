@@ -714,6 +714,67 @@ final class AppState: ObservableObject {
         )
     }
 
+    // MARK: - Total spending pace (Total Spending Trend chart mode)
+
+    /// Total-spending summary for the *Total Spending Trend* chart mode.
+    ///
+    /// Status compares the **projected** month-end total spend against
+    /// `spendLimit = availableToBudget − savingsTarget`. Projection = today's actual + future
+    /// variable burn + unpaid fixed bills remaining, so paying an already-expected fixed bill
+    /// keeps the projection stable. See `TotalSpendingPace`.
+    var totalSpendingPace: TotalSpendingPace.Result {
+        let fixedExpectations = expectedFixedBillsAggregateThisMonth()
+        return TotalSpendingPace.evaluate(
+            transactions: transactions,
+            availableToBudget: availableToBudget,
+            savingsTarget: savingsTargetThisMonth,
+            variableSpentSoFar: variableSpendingPace.variableSpent,
+            expectedFixedBillsThisMonth: fixedExpectations.expected,
+            unpaidFixedBillsRemaining: fixedExpectations.remaining,
+            currentDayOfMonth: currentDayOfMonth,
+            daysInMonth: daysInCurrentMonth,
+            calendar: Calendar.current,
+            now: Date()
+        )
+    }
+
+    /// Sum of `planned` and `max(0, planned − actualPaidThisMonth)` across all visible fixed
+    /// budget items. Hidden items are excluded the same way the Budget Plan rollups do.
+    /// Used by `totalSpendingPace` to keep the projection stable as bills are paid.
+    private func expectedFixedBillsAggregateThisMonth() -> (expected: Double, remaining: Double) {
+        let hidden = hiddenBudgetItemIdsByMonth[currentMonthKey] ?? []
+        let calendar = Calendar.current
+        let now = Date()
+        var expected = 0.0
+        var remaining = 0.0
+        for item in budgetItems where item.budgetType == .fixed && !hidden.contains(item.id) {
+            let planned = max(0, item.planned)
+            let actual = BudgetSpendCalculator.actualPaidAmount(
+                for: item,
+                transactions: transactions,
+                now: now,
+                calendar: calendar
+            )
+            expected += planned
+            remaining += max(0, planned - actual)
+        }
+        return (expected, remaining)
+    }
+
+    /// Per-day projection used when scrubbing the *Total Spending Trend* chart. Anchors at
+    /// today's actual cumulative total and extrapolates only the variable burn rate forward —
+    /// see `TotalSpendingPace.evaluate(...)` for the slope formula.
+    func projectedTotalAmountForDay(dayNumber: Int) -> Double {
+        let cumulative = dailyActualCumulative()
+        return SpendingAnalyticsService.projectedAmountForDay(
+            dayNumber: dayNumber,
+            dailyActualCumulative: cumulative,
+            currentDayOfMonth: currentDayOfMonth,
+            daysInCurrentMonth: daysInCurrentMonth,
+            projectedEndOfMonthSpend: totalSpendingPace.projectedMonthEndSpend
+        )
+    }
+
     func apply(onboardingData: OnboardingData) {
         currentTerm = onboardingData.currentTerm
         monthlyIncome = onboardingData.monthlyIncome

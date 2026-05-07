@@ -76,6 +76,44 @@ enum FinanceCalculator {
         )
     }
 
+    /// Spendable amount after the envelope savings target is reserved:
+    /// `max(0, availableToBudget − savingsTarget)`. Used as the Total Spending Trend gray
+    /// “Spend Limit” line and for total-mode risk vs actual spending.
+    static func usableBudgetAfterSavings(
+        availableToBudget: Double,
+        savingsTarget: Double
+    ) -> Double {
+        max(0, max(0, availableToBudget) - max(0, savingsTarget))
+    }
+
+    // MARK: - Spending trend tooltip (unit-test contract)
+
+    // The trend tooltip is context-sensitive: tapping a past/current day shows **Actual** and
+    // omits Projected; tapping a future day shows **Projected** (or total-mode breakdown rows)
+    // and omits Actual. Variable mode: Actual/Projected + Budget Pace. Total mode: projected
+    // breakdown rows only on future days — **Available** appears only on the gray chart line,
+    // never in the tooltip; **Spend Limit** is shown only as the green chart reference (never in the callout).
+
+    /// Variable Spending Trend tooltip rows for `selectedDay <= currentDay` (after the date).
+    /// **Never** includes Limit or Savings Target — keeps the callout compact.
+    static let spendingTrendVariableTooltipRowTitlesPast: [String] = ["Actual", "Budget Pace"]
+
+    /// Variable Spending Trend tooltip rows for `selectedDay > currentDay`.
+    static let spendingTrendVariableTooltipRowTitlesFuture: [String] = ["Projected", "Budget Pace"]
+
+    /// Total Spending Trend tooltip rows for `selectedDay <= currentDay` (after the date).
+    /// Actual cumulative total only. **Available** is on-chart only (gray dashed line), never here. **Never** Spend Limit.
+    static let spendingTrendTotalTooltipRowTitlesPast: [String] = ["Actual"]
+
+    /// Total Spending Trend tooltip rows for `selectedDay > currentDay` (after the date).
+    /// Projected total and unpaid fixed remainder. The variable component is intentionally
+    /// omitted to keep the callout compact — it can be inferred from `Projected total − Remaining fixed`.
+    /// **Available** is on-chart only, never here. **Never** Spend Limit.
+    static let spendingTrendTotalTooltipRowTitlesFuture: [String] = [
+        "Projected total spending",
+        "Remaining fixed bills"
+    ]
+
     // MARK: - 3. Fixed bill paid logic
 
     /// A fixed bill is *paid* when actual currency applied >= planned amount.

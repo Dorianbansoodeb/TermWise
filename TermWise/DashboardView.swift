@@ -8,6 +8,15 @@ struct DashboardView: View {
     @State private var savedHistoryMode: SavedHistoryMode = .cumulative
     /// Whether the Plan vs Reality bar is showing its tap-to-expand legend.
     @State private var isBreakdownExpanded = false
+    /// Selected mode for the Spending Trend chart. `@State` keeps the choice for the lifetime
+    /// of the dashboard view (i.e. for the app session) without persisting across launches.
+    @State private var spendTrendMode: SpendTrendMode = .variable
+
+    /// Two-mode toggle for the Spending Trend chart card.
+    enum SpendTrendMode {
+        case variable
+        case total
+    }
 
     let onQuickAddExpense: () -> Void
     let onQuickAddIncome: () -> Void
@@ -118,7 +127,24 @@ struct DashboardView: View {
         }
     }
 
+    /// **Spending Trend** card with a Variable ↔ Total toggle.
     private var spendTrendCard: some View {
+        Group {
+            switch spendTrendMode {
+            case .variable:
+                variableSpendTrendCard
+            case .total:
+                totalSpendTrendCard
+            }
+        }
+    }
+
+    /// Variable Spending Trend — pace-based risk on **projected** flexible spending vs variable
+    /// budget. Gray dashed = `variableBudget` ("Limit $X"), orange dashed = budget pace,
+    /// red dashed = projected. The green Spend Limit reference is intentionally omitted here:
+    /// it lives at `availableToBudget − savingsTarget` and would not sit on the same axis as
+    /// the variable budget, so showing it would distort scale.
+    private var variableSpendTrendCard: some View {
         let pace = appState.variableSpendingPace
         let badgeColor: Color = {
             switch pace.status {
@@ -127,38 +153,178 @@ struct DashboardView: View {
             case .overBudgetRisk: return .red
             }
         }()
+        let projectedOverLimit = max(0, pace.projectedMonthEndSpend - pace.variableBudget)
+
         return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Variable Spending Trend")
-                    .font(.headline)
-                Spacer()
-                Text(pace.status.badgeText)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(badgeColor.opacity(0.15))
-                    .foregroundStyle(badgeColor)
-                    .clipShape(Capsule())
-            }
+            spendTrendHeader(
+                title: "Variable Spending Trend",
+                subtitle: "Flexible spending risk",
+                badgeText: pace.status.badgeText,
+                badgeColor: badgeColor
+            )
 
             LineTrendChartView(
+                mode: .variable,
                 dailyActualCumulative: appState.dailyVariableActualCumulative(),
                 currentDay: appState.currentDayOfMonth,
                 daysInMonth: appState.daysInCurrentMonth,
                 projectedEndValue: pace.projectedMonthEndSpend,
                 projectedColor: badgeColor,
-                variableLimit: pace.variableBudget
+                limitValue: pace.variableBudget,
+                limitLabelPrefix: "Limit",
+                showGreenEnvelopeLine: false,
+                greenLineAxisValue: 0,
+                greenLineLabelPrefix: "Spend Limit",
+                greenLineLabelAmount: 0,
+                projectedForDay: { appState.projectedVariableAmountForDay(dayNumber: $0) }
             )
-            .frame(height: 180)
+            .frame(height: 200)
 
-            Text("Fixed bills are tracked separately. This chart shows flexible spending pace.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Fixed bills are tracked separately. This chart shows flexible spending pace.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if projectedOverLimit > 0 {
+                    Text("Projected over spend limit by \(projectedOverLimit.formatted(appState.currencyFormatter))")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.red)
+                }
+            }
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// Total Spending Trend — compares **projected** total spending against two thresholds:
+    /// the full monthly budget (`availableToBudget`, gray dashed) and the savings-protected
+    /// `spendLimit` (green line). The card shows one of three mutually exclusive messages:
+    ///
+    /// - red    — `projected > availableToBudget`: "Projected to exceed your monthly budget by $X
+    ///   across all expenses."
+    /// - orange — `spendLimit < projected ≤ availableToBudget`: "Projected to pass your
+    ///   savings-protected spend limit by $X."
+    /// - green  — `projected ≤ spendLimit`: "Projected spending is within your savings-protected
+    ///   limit."
+    ///
+    /// When `savingsTarget > 0` we also show the savings-aware reference line:
+    /// "Spend Limit after savings target: $X.XX".
+    private var totalSpendTrendCard: some View {
+        let pace = appState.totalSpendingPace
+        let showSpendLimitReference = pace.savingsTarget > 0 && pace.spendLimit > 0
+        let badgeColor: Color = {
+            switch pace.status {
+            case .onTrack: return .green
+            case .nearLimit: return .orange
+            case .overBudget: return .red
+            }
+        }()
+
+        return VStack(alignment: .leading, spacing: 10) {
+            spendTrendHeader(
+                title: "Total Spending Trend",
+                subtitle: "Total budget status",
+                badgeText: pace.status.badgeText,
+                badgeColor: badgeColor
+            )
+
+            LineTrendChartView(
+                mode: .total,
+                dailyActualCumulative: appState.dailyActualCumulative(),
+                currentDay: appState.currentDayOfMonth,
+                daysInMonth: appState.daysInCurrentMonth,
+                projectedEndValue: pace.projectedMonthEndSpend,
+                projectedColor: badgeColor,
+                limitValue: pace.availableToBudget,
+                limitLabelPrefix: "Available",
+                showGreenEnvelopeLine: showSpendLimitReference,
+                greenLineAxisValue: pace.spendLimit,
+                greenLineLabelPrefix: "Spend Limit",
+                greenLineLabelAmount: pace.spendLimit,
+                projectedForDay: { appState.projectedTotalAmountForDay(dayNumber: $0) },
+                projectedVariableForDay: { appState.projectedVariableAmountForDay(dayNumber: $0) },
+                unpaidFixedBillsRemaining: pace.unpaidFixedBillsRemaining
+            )
+            .frame(height: 200)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Total projection uses variable spending pace plus expected fixed bills.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if showSpendLimitReference {
+                    Text("Spend Limit after savings target: \(pace.spendLimit.formatted(appState.currencyFormatter))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                totalSpendTrendStatusMessage(pace: pace)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// One of the three mutually exclusive Total Spending Trend status messages.
+    /// See `totalSpendTrendCard` for the threshold semantics.
+    @ViewBuilder
+    private func totalSpendTrendStatusMessage(pace: TotalSpendingPace.Result) -> some View {
+        switch pace.status {
+        case .overBudget:
+            Text("Projected to exceed your monthly budget by \(pace.projectedOverAvailableByAmount.formatted(appState.currencyFormatter)) across all expenses.")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.red)
+        case .nearLimit:
+            Text("Projected to use money reserved for savings by \(pace.projectedOverBudgetByAmount.formatted(appState.currencyFormatter)).")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.orange)
+        case .onTrack:
+            Text("Projected spending is within your savings-protected limit.")
+                .font(.caption)
+                .foregroundStyle(.green)
+        }
+    }
+
+    /// Header — title + risk-context subtitle + pill + swap icon.
+    private func spendTrendHeader(title: String, subtitle: String, badgeText: String, badgeColor: Color) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(badgeText)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(badgeColor.opacity(0.15))
+                .foregroundStyle(badgeColor)
+                .clipShape(Capsule())
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    spendTrendMode = (spendTrendMode == .variable) ? .total : .variable
+                }
+            } label: {
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(6)
+                    .background(Color.secondary.opacity(0.12), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Toggle spending trend mode")
+            .accessibilityHint(spendTrendMode == .variable ? "Switch to Total Spending Trend" : "Switch to Variable Spending Trend")
+        }
     }
 
     @ViewBuilder
@@ -735,19 +901,40 @@ private struct SavedHistoryChart: View {
 private struct LineTrendChartView: View {
     @EnvironmentObject private var appState: AppState
 
+    enum Mode { case variable, total }
+
+    let mode: Mode
     let dailyActualCumulative: [Double]
     let currentDay: Int
     let daysInMonth: Int
     let projectedEndValue: Double
     let projectedColor: Color
-    /// Total monthly limit for *variable* (flexible) spending.
-    let variableLimit: Double
+    /// Gray dashed line value — variable: variable budget ("Limit $X"); total: `availableToBudget`
+    /// ("Available $X"). **Never** spendLimit on the gray line in either mode.
+    let limitValue: Double
+    let limitLabelPrefix: String
+    /// When true, draws the green reference line at `greenLineAxisValue` (total mode: spendLimit).
+    let showGreenEnvelopeLine: Bool
+    /// Y-axis position for the green line. Total mode passes `spendLimit`; variable mode is off.
+    let greenLineAxisValue: Double
+    /// Pill prefix for the green-line label, e.g. "Spend Limit" → renders "Spend Limit $X".
+    let greenLineLabelPrefix: String
+    /// Dollar amount rendered in the green-line pill (total mode: `spendLimit`).
+    let greenLineLabelAmount: Double
+    let projectedForDay: (Int) -> Double
+    /// Total mode only — projected variable cumulative for `dayNumber`. Used in the future-day
+    /// tooltip to show variable separately from the total projection.
+    var projectedVariableForDay: ((Int) -> Double)? = nil
+    /// Total mode only — Σ `max(0, planned − actualPaid)` for fixed bills this month. Surfaced
+    /// in the future-day tooltip as "Remaining fixed bills". Default `0` keeps variable mode quiet.
+    var unpaidFixedBillsRemaining: Double = 0
+
     @State private var selectedDayIndex: Int? = nil
 
-    private let leftInset: CGFloat = 10
-    private let rightInset: CGFloat = 10
-    private let topInset: CGFloat = 18
-    private let bottomInset: CGFloat = 22
+    private let leftInset: CGFloat = 14
+    private let rightInset: CGFloat = 14
+    private let topInset: CGFloat = 22
+    private let bottomInset: CGFloat = 24
 
     var body: some View {
         GeometryReader { proxy in
@@ -756,11 +943,25 @@ private struct LineTrendChartView: View {
             let width = max(1, outerWidth - leftInset - rightInset)
             let height = max(1, outerHeight - topInset - bottomInset)
 
-            let dataMax = max(1, (dailyActualCumulative + [projectedEndValue, variableLimit]).max() ?? 1)
-            let maxY = max(dataMax * 1.25, variableLimit * 1.2)
-            let yLimit = topInset + (height - (CGFloat(variableLimit) / CGFloat(maxY) * height))
+            let greenForScale = (showGreenEnvelopeLine && greenLineAxisValue > 0) ? greenLineAxisValue : 0.0
+            let dataMax = max(
+                1,
+                (dailyActualCumulative + [projectedEndValue, limitValue, greenForScale]).max() ?? 1
+            )
+            let maxY = max(dataMax * 1.25, limitValue * 1.2, greenForScale * 1.05)
+            let yLimit = topInset + (height - (CGFloat(limitValue) / CGFloat(maxY) * height))
+            let yGreen = topInset + (height - (CGFloat(greenForScale) / CGFloat(maxY) * height))
             let yProjected = topInset + (height - (CGFloat(projectedEndValue) / CGFloat(maxY) * height))
             let projectedX = leftInset + width
+
+            /// Label priority (per spec): Projected > Available/Limit > Spend Limit > Budget Pace.
+            /// The gray "Available" pill is anchored on the left edge while the green
+            /// "Spend Limit" pill is on the right — they never overlap horizontally, so
+            /// matching Y values aren't a collision. Only the red "Projected" pill (also on
+            /// the right) can crowd green; in that case green hides since Projected outranks it.
+            let hideGreenLineLabel =
+                showGreenEnvelopeLine && greenForScale > 0
+                && abs(yGreen - yProjected) < 22
 
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 10)
@@ -768,9 +969,13 @@ private struct LineTrendChartView: View {
 
                 actualPath(width: width, height: height, maxY: maxY)
 
-                paceLine(width: width, height: height, maxY: maxY)
+                if mode == .variable {
+                    paceLine(width: width, height: height, maxY: maxY)
+                }
 
                 limitLine(width: width, yLimit: yLimit)
+
+                savingsEnvelopeLine(width: width, yGreen: yGreen, show: showGreenEnvelopeLine && greenForScale > 0)
 
                 projectionLine(
                     width: width,
@@ -780,11 +985,17 @@ private struct LineTrendChartView: View {
                     projectedY: yProjected
                 )
 
-                limitLabel(yLimit: yLimit, projectedY: yProjected)
+                limitLabel(yLimit: yLimit)
 
-                paceLabel(width: width, height: height, maxY: maxY, yLimit: yLimit)
+                if mode == .variable {
+                    paceLabel(width: width, height: height, maxY: maxY, yLimit: yLimit)
+                }
 
-                projectedLabel(yProjected: yProjected, yLimit: yLimit, projectedX: projectedX)
+                if !hideGreenLineLabel {
+                    savingsTargetLabel(yGreen: yGreen, yLimit: yLimit, chartWidth: width)
+                }
+
+                projectedLabel(yProjected: yProjected, yLimit: yLimit, yGreen: yGreen, projectedX: projectedX)
 
                 dayAxis(outerWidth: outerWidth, outerHeight: outerHeight)
 
@@ -838,8 +1049,8 @@ private struct LineTrendChartView: View {
 
     private func paceLine(width: CGFloat, height: CGFloat, maxY: Double) -> some View {
         Path { path in
-            guard variableLimit > 0, daysInMonth > 0 else { return }
-            let endY = topInset + (height - (CGFloat(variableLimit) / CGFloat(maxY) * height))
+            guard limitValue > 0, daysInMonth > 0 else { return }
+            let endY = topInset + (height - (CGFloat(limitValue) / CGFloat(maxY) * height))
             path.move(to: CGPoint(x: leftInset, y: topInset + height))
             path.addLine(to: CGPoint(x: leftInset + width, y: endY))
         }
@@ -848,12 +1059,26 @@ private struct LineTrendChartView: View {
 
     private func limitLine(width: CGFloat, yLimit: CGFloat) -> some View {
         Group {
-            if variableLimit > 0 {
+            if limitValue > 0 {
                 Path { path in
                     path.move(to: CGPoint(x: leftInset, y: yLimit))
                     path.addLine(to: CGPoint(x: leftInset + width, y: yLimit))
                 }
                 .stroke(Color.gray.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+            }
+        }
+    }
+
+    /// Solid green horizontal line at the **Savings Target** Y axis value (`greenLineAxisValue`,
+    /// which is `savingsTarget` in both modes). The pill label shows the same dollar amount.
+    private func savingsEnvelopeLine(width: CGFloat, yGreen: CGFloat, show: Bool) -> some View {
+        Group {
+            if show {
+                Path { path in
+                    path.move(to: CGPoint(x: leftInset, y: yGreen))
+                    path.addLine(to: CGPoint(x: leftInset + width, y: yGreen))
+                }
+                .stroke(Color.green, style: StrokeStyle(lineWidth: 1.5))
             }
         }
     }
@@ -877,10 +1102,11 @@ private struct LineTrendChartView: View {
 
     // MARK: - Labels (collision-aware)
 
-    private func limitLabel(yLimit: CGFloat, projectedY: CGFloat) -> some View {
+    /// Gray reference label (variable: "Limit $X"; total: "Available $X"). Never "Spend Limit".
+    private func limitLabel(yLimit: CGFloat) -> some View {
         Group {
-            if variableLimit > 0 {
-                let limitText = "Limit \(variableLimit.formatted(appState.currencyFormatter))"
+            if limitValue > 0 {
+                let limitText = "\(limitLabelPrefix) \(limitValue.formatted(appState.currencyFormatter))"
                 let preferredY = max(topInset + 8, yLimit - 12)
                 pillLabel(limitText, color: .secondary)
                     .position(x: leftInset + 6 + labelWidth(for: limitText) / 2, y: preferredY)
@@ -890,10 +1116,10 @@ private struct LineTrendChartView: View {
 
     private func paceLabel(width: CGFloat, height: CGFloat, maxY: Double, yLimit: CGFloat) -> some View {
         Group {
-            if variableLimit > 0 {
+            if limitValue > 0 {
                 let xRatio: CGFloat = 0.55
                 let xPos = leftInset + width * xRatio
-                let valueAt = variableLimit * Double(xRatio)
+                let valueAt = limitValue * Double(xRatio)
                 let yLine = topInset + (height - (CGFloat(valueAt) / CGFloat(maxY) * height))
                 let candidateY = yLine + 14
                 let safeY = abs(candidateY - yLimit) < 16 ? max(topInset + 6, yLine - 14) : candidateY
@@ -903,16 +1129,38 @@ private struct LineTrendChartView: View {
         }
     }
 
-    private func projectedLabel(yProjected: CGFloat, yLimit: CGFloat, projectedX: CGFloat) -> some View {
+    /// Green-line pill — total: "Spend Limit $X". Hidden when `hideGreenLineLabel` collides
+    /// with the gray line, since gray (Available / Limit) ranks above Spend Limit in priority.
+    private func savingsTargetLabel(yGreen: CGFloat, yLimit: CGFloat, chartWidth: CGFloat) -> some View {
+        Group {
+            if greenLineLabelAmount > 0 {
+                let labelText = "\(greenLineLabelPrefix) \(greenLineLabelAmount.formatted(appState.currencyFormatter))"
+                let xPos = leftInset + chartWidth * 0.72
+                let above = yGreen - 12
+                let below = yGreen + 12
+                let candidate = (abs(above - yLimit) < 16) ? below : above
+                pillLabel(labelText, color: .green)
+                    .position(x: xPos, y: candidate)
+            }
+        }
+    }
+
+    private func projectedLabel(yProjected: CGFloat, yLimit: CGFloat, yGreen: CGFloat, projectedX: CGFloat) -> some View {
         let label = "Projected"
         let widthEstimate = labelWidth(for: label)
         let labelX = max(leftInset + widthEstimate / 2, projectedX - widthEstimate / 2 - 4)
         let above = yProjected - 12
         let below = yProjected + 12
-        let candidate = above < topInset + 6 ? below : above
-        let final: CGFloat = abs(candidate - yLimit) < 14 ? (candidate > yLimit ? candidate + 14 : candidate - 14) : candidate
+        var candidate = above < topInset + 6 ? below : above
+        if abs(candidate - yLimit) < 14 {
+            candidate = (candidate > yLimit) ? candidate + 14 : candidate - 14
+        }
+        let greenShown = showGreenEnvelopeLine && greenLineAxisValue > 0
+        if greenShown && abs(candidate - yGreen) < 14 {
+            candidate = (candidate > yGreen) ? candidate + 14 : candidate - 14
+        }
         return pillLabel(label, color: projectedColor)
-            .position(x: labelX, y: final)
+            .position(x: labelX, y: candidate)
     }
 
     private func pillLabel(_ text: String, color: Color) -> some View {
@@ -966,13 +1214,13 @@ private struct LineTrendChartView: View {
         }()
 
         // Projected value follows the red projection line: equals actual on past days, extrapolates for future days.
-        let projectedForDay = appState.projectedVariableAmountForDay(dayNumber: dayNumber)
+        let projected = projectedForDay(dayNumber)
 
-        // Budget pace follows the orange dashed line: limit * day/daysInMonth.
-        let paceForDay = variableLimit * (Double(dayNumber) / Double(max(1, daysInMonth)))
+        // Budget pace follows the orange dashed line: limit * day/daysInMonth. Variable mode only.
+        let paceForDay = limitValue * (Double(dayNumber) / Double(max(1, daysInMonth)))
 
         // Anchor the dot on the red projection line for visual consistency with the projection.
-        let dotY = topInset + (height - (CGFloat(projectedForDay) / CGFloat(maxY) * height))
+        let dotY = topInset + (height - (CGFloat(projected) / CGFloat(maxY) * height))
 
         Path { path in
             path.move(to: CGPoint(x: x, y: topInset))
@@ -988,7 +1236,7 @@ private struct LineTrendChartView: View {
         tooltipBubble(
             day: index,
             actual: actualForDay,
-            projected: projectedForDay,
+            projected: projected,
             pace: paceForDay
         )
         .position(
@@ -1002,23 +1250,42 @@ private struct LineTrendChartView: View {
         )
     }
 
+    /// Tap tooltip — context-sensitive (matches `FinanceCalculator.spendingTrend...TooltipRowTitles`):
+    ///
+    /// - Variable, past/today : Actual · Budget Pace
+    /// - Variable, future     : Projected · Budget Pace
+    /// - Total,    past/today : Actual (Available is gray line only; Spend Limit is on-chart only)
+    /// - Total,    future     : Projected total · Projected variable · Remaining fixed bills
+    ///
+    /// Projected is **never** shown for `selectedDay <= currentDay`; Actual is **never** shown
+    /// for `selectedDay > currentDay`.
     private func tooltipBubble(
         day index: Int,
         actual: Double?,
         projected: Double,
         pace: Double
     ) -> some View {
+        // `actual` is non-nil only for `selectedDay <= currentDay` (set upstream in
+        // selectedDayOverlay). The presence of actual is the past/future signal.
         VStack(alignment: .leading, spacing: 4) {
             Text(dateLabel(for: index))
                 .font(.caption2)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
-            if let actual {
+            if mode == .variable {
+                if let actual {
+                    tooltipRow(label: "Actual", value: actual, color: .blue)
+                } else {
+                    tooltipRow(label: "Projected", value: projected, color: projectedColor)
+                }
+                tooltipRow(label: "Budget Pace", value: pace, color: .orange)
+            } else if let actual {
                 tooltipRow(label: "Actual", value: actual, color: .blue)
+            } else {
+                tooltipRow(label: "Projected total spending", value: projected, color: projectedColor)
+                tooltipRow(label: "Remaining fixed bills", value: unpaidFixedBillsRemaining, color: .secondary)
             }
-            tooltipRow(label: "Projected", value: projected, color: projectedColor)
-            tooltipRow(label: "Budget Pace", value: pace, color: .orange)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -1042,7 +1309,9 @@ private struct LineTrendChartView: View {
         }
     }
 
-    /// Keeps the tooltip inside the chart bounds. Prefers placing it above the anchor; flips below if there's no room.
+    /// Keeps the tooltip inside the chart bounds. Row count mirrors `tooltipBubble`:
+    /// Variable: date · Actual/Projected · Budget Pace (3). Total past: date · Actual (2).
+    /// Total future: date · projected total · remaining fixed (3).
     private func tooltipPosition(
         anchorX: CGFloat,
         anchorY: CGFloat,
@@ -1050,8 +1319,13 @@ private struct LineTrendChartView: View {
         outerHeight: CGFloat,
         hasActual: Bool
     ) -> CGPoint {
-        let estimatedWidth: CGFloat = 168
-        let estimatedHeight: CGFloat = hasActual ? 92 : 70
+        let rowHeight: CGFloat = 18
+        let totalRows: CGFloat = {
+            if mode == .variable { return 3 }
+            return hasActual ? 2 : 3
+        }()
+        let estimatedWidth: CGFloat = 200
+        let estimatedHeight: CGFloat = max(64, totalRows * rowHeight + 16)
         let halfW = estimatedWidth / 2
         let halfH = estimatedHeight / 2
         let margin: CGFloat = 6

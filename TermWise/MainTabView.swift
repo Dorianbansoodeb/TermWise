@@ -5,6 +5,12 @@ struct MainTabView: View {
     @State private var showAddTransactionSheet = false
     @EnvironmentObject private var appState: AppState
 
+    /// Auto-dismiss work item for `pendingUndo`. Cancelled when Undo is tapped, when the snackbar
+    /// is dismissed, when a new undo replaces the current one, or when this view disappears.
+    @State private var undoSnackbarDismissWorkItem: DispatchWorkItem?
+
+    private static let undoSnackbarAutoDismissSeconds: TimeInterval = 5
+
     private static let fabOrange = Color(red: 249 / 255, green: 115 / 255, blue: 22 / 255)
     private static let pillHeight: CGFloat = 64
     private static let fabSize: CGFloat = 64
@@ -82,6 +88,7 @@ struct MainTabView: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Undo") {
+                            cancelUndoSnackbarDismissTimer()
                             appState.performPendingUndo()
                         }
                         .buttonStyle(.borderedProminent)
@@ -90,11 +97,22 @@ struct MainTabView: View {
                     .padding(.vertical, 10)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 bottomNavRow
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
+            .animation(.easeInOut(duration: 0.25), value: appState.pendingUndo != nil)
+            .onChange(of: appState.pendingUndo, initial: true) { _, newValue in
+                cancelUndoSnackbarDismissTimer()
+                if newValue != nil {
+                    scheduleUndoSnackbarAutoDismiss()
+                }
+            }
+            .onDisappear {
+                cancelUndoSnackbarDismissTimer()
+            }
         }
         .sheet(isPresented: $showAddTransactionSheet) {
             NavigationStack {
@@ -124,6 +142,25 @@ struct MainTabView: View {
         } message: { prompt in
             Text(incomePromptMessage(prompt))
         }
+    }
+
+    private func cancelUndoSnackbarDismissTimer() {
+        undoSnackbarDismissWorkItem?.cancel()
+        undoSnackbarDismissWorkItem = nil
+    }
+
+    /// Starts or restarts the 5-second auto-dismiss. Each new `pendingUndo` replaces the previous
+    /// timer so only one dismissal runs.
+    private func scheduleUndoSnackbarAutoDismiss() {
+        cancelUndoSnackbarDismissTimer()
+        let work = DispatchWorkItem { [appState] in
+            appState.dismissPendingUndo()
+        }
+        undoSnackbarDismissWorkItem = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Self.undoSnackbarAutoDismissSeconds,
+            execute: work
+        )
     }
 
     private func incomePromptMessage(_ prompt: PendingIncomePrompt) -> String {
