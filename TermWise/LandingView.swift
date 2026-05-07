@@ -136,7 +136,7 @@ struct LandingView: View {
     private var appVersionLabel: String {
         let shortVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-        return "Version \(shortVersion) (\(buildNumber))"
+        return "Version \(shortVersion) (\(buildNumber)) • \(AppMetadata.internalVersion)"
     }
 }
 

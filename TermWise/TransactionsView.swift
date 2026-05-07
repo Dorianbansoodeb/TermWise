@@ -10,6 +10,7 @@ struct TransactionsView: View {
     @State private var markedIds: Set<UUID> = []
     @State private var moreActionsTarget: TransactionItem?
     @State private var recentlyRemovedTransaction: TransactionItem?
+    private let calendar = Calendar.current
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,8 +48,21 @@ struct TransactionsView: View {
                     }
                 }
 
-                ForEach(filteredTransactions) { transaction in
-                    transactionRow(for: transaction)
+                ForEach(groupedTransactions) { group in
+                    Section {
+                        ForEach(group.transactions) { transaction in
+                            transactionRow(for: transaction)
+                                .listRowBackground(Color.clear)
+                        }
+                    } header: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(group.title)
+                                .font(.headline)
+                            Text("\(signedAmount(group.expenses, sign: "-")) • \(signedAmount(group.income, sign: "+")) • Net \(signedAmount(group.net, sign: group.net >= 0 ? "+" : "-"))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             .listStyle(.insetGrouped)
@@ -122,7 +136,7 @@ struct TransactionsView: View {
             if leftPinned != rightPinned {
                 return leftPinned && !rightPinned
             }
-            return lhs.date > rhs.date
+            return lhs.createdAt > rhs.createdAt
         }
 
         if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -132,6 +146,33 @@ struct TransactionsView: View {
             $0.category.localizedCaseInsensitiveContains(searchText) ||
             $0.note.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    private var groupedTransactions: [TransactionDateGroup] {
+        let grouped = Dictionary(grouping: filteredTransactions) {
+            calendar.startOfDay(for: $0.date)
+        }
+        return grouped
+            .map { day, transactions in
+                let sortedTransactions = transactions.sorted { $0.createdAt > $1.createdAt }
+                let income = sortedTransactions
+                    .filter { $0.type == .income }
+                    .reduce(0) { $0 + $1.amount }
+                let expenses = sortedTransactions
+                    .filter { $0.type == .expense }
+                    .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
+                let net = income - expenses
+                return TransactionDateGroup(
+                    id: day,
+                    date: day,
+                    title: dateHeader(for: day),
+                    transactions: sortedTransactions,
+                    income: income,
+                    expenses: expenses,
+                    net: net
+                )
+            }
+            .sorted { $0.date > $1.date }
     }
 
     private var totalIncome: Double {
@@ -152,6 +193,23 @@ struct TransactionsView: View {
         } else {
             set.insert(id)
         }
+    }
+
+    private func dateHeader(for date: Date) -> String {
+        if calendar.isDateInToday(date) { return "Today" }
+        if calendar.isDateInYesterday(date) { return "Yesterday" }
+
+        let currentYear = calendar.component(.year, from: Date())
+        let dateYear = calendar.component(.year, from: date)
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = dateYear == currentYear ? "EEEE, MMM d" : "MMMM d, yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func signedAmount(_ value: Double, sign: String) -> String {
+        "\(sign)\(abs(value).formatted(appState.currencyFormatter))"
     }
 
     @ViewBuilder
@@ -208,7 +266,9 @@ private struct TransactionListRow: View {
                 .fontWeight(.bold)
                 .foregroundStyle(transaction.type == .expense ? .red : .green)
         }
-        .padding(.vertical, 4)
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
@@ -254,12 +314,17 @@ private struct TransactionListRow: View {
 
     private var rowDetails: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(transaction.category)
+            Text(transaction.name)
                 .fontWeight(.semibold)
-            Text(transaction.note.isEmpty ? "No note" : transaction.note)
+            Text(transaction.category)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text(transaction.date.formatted(date: .abbreviated, time: .shortened))
+            if !transaction.note.isEmpty {
+                Text(transaction.note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(transaction.createdAt.formatted(date: .omitted, time: .shortened))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             if transaction.type == .expense && transaction.savedApplied > 0 {
@@ -310,11 +375,22 @@ private struct TransactionListRow: View {
         guard transaction.type == .expense else { return }
         appState.addTransaction(
             amount: transaction.amount,
+            name: transaction.name,
             category: transaction.category,
             note: "Duplicate: \(transaction.note)",
             type: .expense
         )
     }
+}
+
+private struct TransactionDateGroup: Identifiable {
+    let id: Date
+    let date: Date
+    let title: String
+    let transactions: [TransactionItem]
+    let income: Double
+    let expenses: Double
+    let net: Double
 }
 
 private enum TransactionFilter: String, CaseIterable, Identifiable {

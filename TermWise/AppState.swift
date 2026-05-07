@@ -12,30 +12,36 @@ enum TransactionType: String, Codable, CaseIterable, Identifiable {
 struct TransactionItem: Identifiable, Codable {
     let id: UUID
     let amount: Double
+    let name: String
     let category: String
     let note: String
     let date: Date
+    let createdAt: Date
     let type: TransactionType
     let savedApplied: Double
 
     private enum CodingKeys: String, CodingKey {
-        case id, amount, category, note, date, type, savedApplied
+        case id, amount, name, category, note, date, createdAt, type, savedApplied
     }
 
     init(
         id: UUID,
         amount: Double,
+        name: String? = nil,
         category: String,
         note: String,
         date: Date,
+        createdAt: Date? = nil,
         type: TransactionType,
         savedApplied: Double = 0
     ) {
         self.id = id
         self.amount = amount
+        self.name = name ?? category
         self.category = category
         self.note = note
         self.date = date
+        self.createdAt = createdAt ?? date
         self.type = type
         self.savedApplied = savedApplied
     }
@@ -44,31 +50,80 @@ struct TransactionItem: Identifiable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         amount = try container.decode(Double.self, forKey: .amount)
+        let decodedName = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         category = try container.decode(String.self, forKey: .category)
         note = try container.decode(String.self, forKey: .note)
-        date = try container.decode(Date.self, forKey: .date)
+        if let decodedDate = try? container.decode(Date.self, forKey: .date) {
+            date = decodedDate
+        } else {
+            let dateString = try container.decode(String.self, forKey: .date)
+            date = TransactionItem.parseDateString(dateString) ?? Date()
+        }
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? date
         type = try container.decode(TransactionType.self, forKey: .type)
         savedApplied = try container.decodeIfPresent(Double.self, forKey: .savedApplied) ?? 0
+        name = decodedName.isEmpty ? category : decodedName
+    }
+
+    private static func parseDateString(_ value: String) -> Date? {
+        let isoFormatter = ISO8601DateFormatter()
+        if let isoDate = isoFormatter.date(from: value) { return isoDate }
+
+        let formatters: [DateFormatter] = {
+            let formats = ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd", "MMM d, yyyy", "MMMM d, yyyy"]
+            return formats.map { format in
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.dateFormat = format
+                return formatter
+            }
+        }()
+        for formatter in formatters {
+            if let parsed = formatter.date(from: value) { return parsed }
+        }
+        return nil
     }
 }
 
 struct BudgetItem: Identifiable, Codable {
     let id: UUID
-    let category: String
+    var category: String
     var planned: Double
+    var budgetType: BudgetType
+    var frequency: PaymentFrequency
     var dueDay: Int?
-    var dueRule: DueDateRule?
+    var dueWeekday: Int?
+    var dueDate: Date?
+    var isPaid: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case id, category, planned, dueDay, dueRule
+        case id, category, planned, budgetType, frequency, dueDay, dueWeekday, dueDate, isPaid
     }
 
-    init(id: UUID, category: String, planned: Double, dueDay: Int?, dueRule: DueDateRule?) {
+    private enum LegacyCodingKeys: String, CodingKey {
+        case dueRule
+    }
+
+    init(
+        id: UUID,
+        category: String,
+        planned: Double,
+        budgetType: BudgetType = .variable,
+        frequency: PaymentFrequency = .none,
+        dueDay: Int?,
+        dueWeekday: Int?,
+        dueDate: Date?,
+        isPaid: Bool = false
+    ) {
         self.id = id
         self.category = category
         self.planned = planned
+        self.budgetType = budgetType
+        self.frequency = frequency
         self.dueDay = dueDay
-        self.dueRule = dueRule
+        self.dueWeekday = dueWeekday
+        self.dueDate = dueDate
+        self.isPaid = isPaid
     }
 
     init(from decoder: Decoder) throws {
@@ -76,10 +131,66 @@ struct BudgetItem: Identifiable, Codable {
         id = try container.decode(UUID.self, forKey: .id)
         category = try container.decode(String.self, forKey: .category)
         planned = try container.decode(Double.self, forKey: .planned)
+        budgetType = try container.decodeIfPresent(BudgetType.self, forKey: .budgetType) ?? .variable
+        frequency = try container.decodeIfPresent(PaymentFrequency.self, forKey: .frequency) ?? .none
         dueDay = try container.decodeIfPresent(Int.self, forKey: .dueDay)
-        dueRule = try container.decodeIfPresent(DueDateRule.self, forKey: .dueRule)
-        if dueRule == nil, dueDay != nil {
-            dueRule = .monthlyDay
+        dueWeekday = try container.decodeIfPresent(Int.self, forKey: .dueWeekday)
+        dueDate = try container.decodeIfPresent(Date.self, forKey: .dueDate)
+        isPaid = try container.decodeIfPresent(Bool.self, forKey: .isPaid) ?? false
+
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        if let legacyRule = try legacyContainer.decodeIfPresent(DueDateRule.self, forKey: .dueRule), frequency == .none {
+            switch legacyRule {
+            case .monthlyDay:
+                frequency = .monthly
+            case .endOfMonth:
+                frequency = .monthly
+                dueDay = 28
+            case .biweekly:
+                frequency = .biweekly
+            }
+        } else if frequency == .none, dueDay != nil {
+            frequency = .monthly
+        }
+
+        if budgetType == .variable {
+            if frequency != .none || dueDay != nil || dueWeekday != nil || dueDate != nil {
+                budgetType = .fixed
+            }
+        }
+    }
+}
+
+enum BudgetType: String, Codable, CaseIterable, Identifiable {
+    case fixed
+    case variable
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .fixed: return "Recurring Bill / Fixed Expense"
+        case .variable: return "Variable Spending Category"
+        }
+    }
+}
+
+enum PaymentFrequency: String, Codable, CaseIterable, Identifiable {
+    case none
+    case monthly
+    case weekly
+    case biweekly
+    case oneTime
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .none: return "None"
+        case .monthly: return "Monthly"
+        case .weekly: return "Weekly"
+        case .biweekly: return "Biweekly"
+        case .oneTime: return "One-time"
         }
     }
 }
@@ -115,8 +226,14 @@ struct BillReminder: Identifiable, Codable {
     var expectedAmount: Double
 }
 
+enum FixedBillStatus {
+    case paid
+    case upcoming
+    case overdue
+}
+
 final class AppState: ObservableObject {
-    private static let storageKey = "termwise.appState.v1"
+    private let repository: AppRepository
     private var cancellables = Set<AnyCancellable>()
 
     // Core profile and goals
@@ -136,11 +253,12 @@ final class AppState: ObservableObject {
     @Published var draftTransactionType: TransactionType = .expense
 
     @Published var budgetItems: [BudgetItem] = [
-        .init(id: UUID(), category: "Rent", planned: 900, dueDay: 1, dueRule: .monthlyDay),
-        .init(id: UUID(), category: "Groceries", planned: 280, dueDay: nil, dueRule: nil),
-        .init(id: UUID(), category: "Transportation", planned: 120, dueDay: nil, dueRule: nil),
-        .init(id: UUID(), category: "Eating Out", planned: 140, dueDay: nil, dueRule: nil),
-        .init(id: UUID(), category: "Tuition/Savings", planned: 300, dueDay: 7, dueRule: .monthlyDay)
+        .init(id: UUID(), category: "Rent", planned: 900, budgetType: .fixed, frequency: .monthly, dueDay: 1, dueWeekday: nil, dueDate: nil),
+        .init(id: UUID(), category: "Phone bill", planned: 35, budgetType: .fixed, frequency: .monthly, dueDay: 15, dueWeekday: nil, dueDate: nil),
+        .init(id: UUID(), category: "Groceries", planned: 280, budgetType: .variable, frequency: .none, dueDay: nil, dueWeekday: nil, dueDate: nil),
+        .init(id: UUID(), category: "Transportation", planned: 120, budgetType: .variable, frequency: .none, dueDay: nil, dueWeekday: nil, dueDate: nil),
+        .init(id: UUID(), category: "Eating Out", planned: 140, budgetType: .variable, frequency: .none, dueDay: nil, dueWeekday: nil, dueDate: nil),
+        .init(id: UUID(), category: "Tuition/Savings", planned: 300, budgetType: .fixed, frequency: .monthly, dueDay: 7, dueWeekday: nil, dueDate: nil)
     ]
 
     @Published var transactions: [TransactionItem] = AppState.seededMayTransactions()
@@ -152,6 +270,9 @@ final class AppState: ObservableObject {
     @Published var weeklyNotes: [String: String] = [:]
     @Published var pinnedTransactionIds: Set<UUID> = []
     @Published var monthlyNotes: [String: String] = [:]
+    @Published var hiddenBudgetItemIdsByMonth: [String: Set<UUID>] = [:]
+    @Published var fixedBillActualOverridesByMonth: [String: [UUID: Double]] = [:]
+    @Published var fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]] = [:]
 
     // Simple local history for charts in profile panel
     @Published var monthlyHistory: [MonthlySummary] = [
@@ -161,9 +282,15 @@ final class AppState: ObservableObject {
         .init(id: UUID(), monthLabel: "Apr", planned: 1480, actual: 1410, saved: 70)
     ]
 
-    init() {
+    init(repository: AppRepository = SnapshotAppRepository()) {
+        self.repository = repository
         load()
         setupAutoSave()
+        if let remoteSyncingRepository = repository as? RemoteSyncingAppRepository {
+            remoteSyncingRepository.refreshFromRemote { [weak self] snapshot in
+                self?.applySnapshot(snapshot)
+            }
+        }
     }
 
     var totalPlannedSpend: Double {
@@ -305,15 +432,21 @@ final class AppState: ObservableObject {
         let calendar = Calendar.current
         let now = Date()
         let derivedBills = budgetItems.compactMap { item -> BillReminder? in
-            guard let rule = item.dueRule else { return nil }
+            guard item.budgetType == .fixed, item.frequency != .none else { return nil }
             let day = item.dueDay ?? 1
             return BillReminder(id: item.id, title: item.category, dueDay: day, expectedAmount: item.planned)
         }
         return derivedBills.filter { bill in
             guard
                 let item = budgetItems.first(where: { $0.id == bill.id }),
-                let rule = item.dueRule,
-                let dayDelta = daysUntilDue(rule: rule, dueDay: item.dueDay, now: now, calendar: calendar)
+                let dayDelta = daysUntilDue(
+                    frequency: item.frequency,
+                    dueDay: item.dueDay,
+                    dueWeekday: item.dueWeekday,
+                    dueDate: item.dueDate,
+                    now: now,
+                    calendar: calendar
+                )
             else { return false }
             return dayDelta >= 0 && dayDelta <= 2
         }
@@ -344,23 +477,35 @@ final class AppState: ObservableObject {
             .reduce(0) { $0 + max(0, $1.amount - $1.savedApplied) }
     }
 
+    func actualPaidAmount(for item: BudgetItem) -> Double {
+        let transactionActual = actualAmount(for: item.category)
+        guard item.budgetType == .fixed else { return transactionActual }
+        let overrideAmount = fixedBillActualOverridesByMonth[currentMonthKey]?[item.id] ?? 0
+        return max(transactionActual, overrideAmount)
+    }
+
     func addTransaction(
         amount: Double,
+        name: String? = nil,
         category: String,
         note: String,
         type: TransactionType,
         savedApplied: Double = 0
     ) {
+        let now = Date()
         let item = TransactionItem(
             id: UUID(),
             amount: amount,
+            name: name,
             category: category,
             note: note,
-            date: Date(),
+            date: now,
+            createdAt: now,
             type: type,
             savedApplied: savedApplied
         )
         transactions.insert(item, at: 0)
+        reconcileFixedBillPaidStates()
     }
 
     func deleteTransaction(id: UUID) {
@@ -379,7 +524,16 @@ final class AppState: ObservableObject {
         transactions.insert(transaction, at: 0)
     }
 
-    func addBudgetCategory(name: String, planned: Double, dueDay: Int?, dueRule: DueDateRule?) {
+    func addBudgetCategory(
+        name: String,
+        planned: Double,
+        budgetType: BudgetType,
+        frequency: PaymentFrequency,
+        dueDay: Int?,
+        dueWeekday: Int?,
+        dueDate: Date?,
+        isPaid: Bool
+    ) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, planned >= 0 else { return }
         budgetItems.append(
@@ -387,16 +541,97 @@ final class AppState: ObservableObject {
                 id: UUID(),
                 category: trimmed,
                 planned: planned,
+                budgetType: budgetType,
+                frequency: frequency,
                 dueDay: dueDay,
-                dueRule: dueRule
+                dueWeekday: dueWeekday,
+                dueDate: dueDate,
+                isPaid: isPaid
             )
         )
     }
 
-    private func daysUntilDue(rule: DueDateRule, dueDay: Int?, now: Date, calendar: Calendar) -> Int? {
+    func hideBudgetItemForCurrentMonth(_ id: UUID) {
+        var ids = hiddenBudgetItemIdsByMonth[currentMonthKey] ?? []
+        ids.insert(id)
+        hiddenBudgetItemIdsByMonth[currentMonthKey] = ids
+    }
+
+    func isBudgetItemHiddenForCurrentMonth(_ id: UUID) -> Bool {
+        hiddenBudgetItemIdsByMonth[currentMonthKey]?.contains(id) ?? false
+    }
+
+    func markFixedBillPaid(_ id: UUID) {
+        guard let index = budgetItems.firstIndex(where: { $0.id == id && $0.budgetType == .fixed }) else { return }
+        let item = budgetItems[index]
+        let monthTransactionMap = fixedBillPaymentTransactionIdsByMonth[currentMonthKey] ?? [:]
+        if monthTransactionMap[id] == nil {
+            let now = Date()
+            let paymentTransaction = TransactionItem(
+                id: UUID(),
+                amount: item.planned,
+                name: item.category,
+                category: item.category,
+                note: "Bill payment",
+                date: now,
+                createdAt: now,
+                type: .expense,
+                savedApplied: 0
+            )
+            transactions.insert(paymentTransaction, at: 0)
+            var updatedMap = monthTransactionMap
+            updatedMap[id] = paymentTransaction.id
+            fixedBillPaymentTransactionIdsByMonth[currentMonthKey] = updatedMap
+        }
+        let actual = actualPaidAmount(for: item)
+        if actual < item.planned {
+            var monthOverrides = fixedBillActualOverridesByMonth[currentMonthKey] ?? [:]
+            monthOverrides[id] = item.planned
+            fixedBillActualOverridesByMonth[currentMonthKey] = monthOverrides
+        }
+        budgetItems[index].isPaid = true
+    }
+
+    func markFixedBillUnpaid(_ id: UUID) {
+        guard let index = budgetItems.firstIndex(where: { $0.id == id && $0.budgetType == .fixed }) else { return }
+        if let transactionId = fixedBillPaymentTransactionIdsByMonth[currentMonthKey]?[id] {
+            transactions.removeAll { $0.id == transactionId }
+            var map = fixedBillPaymentTransactionIdsByMonth[currentMonthKey] ?? [:]
+            map.removeValue(forKey: id)
+            fixedBillPaymentTransactionIdsByMonth[currentMonthKey] = map
+        }
+        budgetItems[index].isPaid = false
+    }
+
+    func fixedBillStatus(for item: BudgetItem) -> FixedBillStatus {
+        guard item.budgetType == .fixed else { return .upcoming }
+        if item.isPaid {
+            return .paid
+        }
+        let delta = daysUntilDue(
+            frequency: item.frequency,
+            dueDay: item.dueDay,
+            dueWeekday: item.dueWeekday,
+            dueDate: item.dueDate,
+            now: Date(),
+            calendar: Calendar.current
+        ) ?? 0
+        return delta < 0 ? .overdue : .upcoming
+    }
+
+    private func daysUntilDue(
+        frequency: PaymentFrequency,
+        dueDay: Int?,
+        dueWeekday: Int?,
+        dueDate: Date?,
+        now: Date,
+        calendar: Calendar
+    ) -> Int? {
         let startToday = calendar.startOfDay(for: now)
-        switch rule {
-        case .monthlyDay:
+        switch frequency {
+        case .none:
+            return nil
+        case .monthly:
             guard let dueDay else { return nil }
             guard let dueDate = calendar.date(
                 from: DateComponents(
@@ -406,31 +641,17 @@ final class AppState: ObservableObject {
                 )
             ) else { return nil }
             return calendar.dateComponents([.day], from: startToday, to: dueDate).day
-        case .endOfMonth:
-            guard let monthRange = calendar.range(of: .day, in: .month, for: now) else { return nil }
-            let lastDay = monthRange.count
-            guard let dueDate = calendar.date(
-                from: DateComponents(
-                    year: calendar.component(.year, from: now),
-                    month: calendar.component(.month, from: now),
-                    day: lastDay
-                )
-            ) else { return nil }
-            return calendar.dateComponents([.day], from: startToday, to: dueDate).day
+        case .weekly:
+            guard let dueWeekday else { return nil }
+            let todayWeekday = calendar.component(.weekday, from: startToday)
+            return (dueWeekday - todayWeekday + 7) % 7
         case .biweekly:
-            let anchorDay = min(28, max(1, dueDay ?? 1))
-            guard var nextDue = calendar.date(
-                from: DateComponents(
-                    year: calendar.component(.year, from: now),
-                    month: calendar.component(.month, from: now),
-                    day: anchorDay
-                )
-            ) else { return nil }
-            while nextDue < startToday {
-                guard let shifted = calendar.date(byAdding: .day, value: 14, to: nextDue) else { break }
-                nextDue = shifted
-            }
-            return calendar.dateComponents([.day], from: startToday, to: nextDue).day
+            guard let dueWeekday else { return nil }
+            let todayWeekday = calendar.component(.weekday, from: startToday)
+            return (dueWeekday - todayWeekday + 7) % 7
+        case .oneTime:
+            guard let dueDate else { return nil }
+            return calendar.dateComponents([.day], from: startToday, to: calendar.startOfDay(for: dueDate)).day
         }
     }
 
@@ -517,10 +738,12 @@ final class AppState: ObservableObject {
         tuitionGoal = onboardingData.tuitionGoal
         monthlySpendingBudget = onboardingData.monthlySpendingBudget
 
-        let nonTuitionTotal = budgetItems.dropLast().reduce(0) { $0 + $1.planned }
+        let nonTuitionTotal = budgetItems
+            .filter { !$0.category.localizedCaseInsensitiveContains("tuition") }
+            .reduce(0) { $0 + $1.planned }
         let tuitionPlanned = max(0, monthlySpendingBudget - nonTuitionTotal)
-        if let lastIndex = budgetItems.indices.last {
-            budgetItems[lastIndex].planned = tuitionPlanned
+        if let tuitionIndex = budgetItems.firstIndex(where: { $0.category.localizedCaseInsensitiveContains("tuition") }) {
+            budgetItems[tuitionIndex].planned = tuitionPlanned
         }
     }
 
@@ -560,44 +783,104 @@ final class AppState: ObservableObject {
             weeklyNotes: weeklyNotes,
             pinnedTransactionIds: pinnedTransactionIds,
             monthlyNotes: monthlyNotes,
+            hiddenBudgetItemIdsByMonth: hiddenBudgetItemIdsByMonth,
+            fixedBillActualOverridesByMonth: fixedBillActualOverridesByMonth,
+            fixedBillPaymentTransactionIdsByMonth: fixedBillPaymentTransactionIdsByMonth,
             budgetItems: budgetItems,
             transactions: transactions
         )
 
-        do {
-            let data = try JSONEncoder().encode(snapshot)
-            UserDefaults.standard.set(data, forKey: Self.storageKey)
-        } catch {
-            // Intentionally ignore save failures for MVP local mode
-        }
+        repository.saveSnapshot(snapshot)
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: Self.storageKey) else { return }
-        do {
-            let decoded = try JSONDecoder().decode(PersistedState.self, from: data)
-            currentTerm = decoded.onboarding.currentTerm
-            monthlyIncome = decoded.onboarding.monthlyIncome
-            expectedCoopIncome = decoded.onboarding.expectedCoopIncome
-            tuitionGoal = decoded.onboarding.tuitionGoal
-            monthlySpendingBudget = decoded.onboarding.monthlySpendingBudget
-            manualMonthlyLimit = decoded.manualMonthlyLimit
-            desiredSavingsRate = decoded.desiredSavingsRate
-            bonusIncomeForMonth = decoded.bonusIncomeForMonth
-            currencyCode = decoded.currencyCode
-            billReminders = decoded.billReminders
-            weeklyNotes = decoded.weeklyNotes
-            pinnedTransactionIds = decoded.pinnedTransactionIds
-            monthlyNotes = decoded.monthlyNotes
-            budgetItems = decoded.budgetItems
-            transactions = decoded.transactions
-        } catch {
-            // If decoding fails (schema changes), fall back to defaults
+        guard let decoded = repository.loadSnapshot() else { return }
+        applySnapshot(decoded)
+    }
+
+    private func applySnapshot(_ decoded: PersistedState) {
+        let migratedBudgetItems = applyBudgetDefaults(decoded.budgetItems)
+        currentTerm = decoded.onboarding.currentTerm
+        monthlyIncome = decoded.onboarding.monthlyIncome
+        expectedCoopIncome = decoded.onboarding.expectedCoopIncome
+        tuitionGoal = decoded.onboarding.tuitionGoal
+        monthlySpendingBudget = decoded.onboarding.monthlySpendingBudget
+        manualMonthlyLimit = decoded.manualMonthlyLimit
+        desiredSavingsRate = decoded.desiredSavingsRate
+        bonusIncomeForMonth = decoded.bonusIncomeForMonth
+        currencyCode = decoded.currencyCode
+        billReminders = decoded.billReminders
+        weeklyNotes = decoded.weeklyNotes
+        pinnedTransactionIds = decoded.pinnedTransactionIds
+        monthlyNotes = decoded.monthlyNotes
+        hiddenBudgetItemIdsByMonth = decoded.hiddenBudgetItemIdsByMonth
+        fixedBillActualOverridesByMonth = decoded.fixedBillActualOverridesByMonth
+        fixedBillPaymentTransactionIdsByMonth = decoded.fixedBillPaymentTransactionIdsByMonth
+        budgetItems = migratedBudgetItems
+        transactions = decoded.transactions
+        reconcileFixedBillPaidStates()
+    }
+
+    private func reconcileFixedBillPaidStates() {
+        for index in budgetItems.indices where budgetItems[index].budgetType == .fixed {
+            if actualPaidAmount(for: budgetItems[index]) >= budgetItems[index].planned {
+                budgetItems[index].isPaid = true
+            } else if budgetItems[index].frequency == .none {
+                budgetItems[index].isPaid = false
+            }
         }
+    }
+
+    private func applyBudgetDefaults(_ items: [BudgetItem]) -> [BudgetItem] {
+        var result: [BudgetItem] = items.map { item in
+            var updated = item
+
+            if item.category == "Rent", item.frequency == .none || item.dueDay == nil {
+                updated.budgetType = .fixed
+                updated.frequency = .monthly
+                updated.dueDay = updated.dueDay ?? 1
+            }
+
+            if item.category == "Tuition/Savings" {
+                updated.budgetType = .fixed
+                updated.frequency = .monthly
+                updated.dueDay = 7
+            }
+
+            if item.category.localizedCaseInsensitiveContains("phone"), item.frequency == .none || item.dueDay == nil {
+                updated.budgetType = .fixed
+                updated.frequency = .monthly
+                updated.dueDay = 15
+            }
+
+            if updated.budgetType == .variable, updated.frequency != .none {
+                updated.budgetType = .fixed
+            }
+
+            return updated
+        }
+
+        if !result.contains(where: { $0.category.localizedCaseInsensitiveContains("phone") }) {
+            result.append(
+                BudgetItem(
+                    id: UUID(),
+                    category: "Phone bill",
+                    planned: 35,
+                    budgetType: .fixed,
+                    frequency: .monthly,
+                    dueDay: 15,
+                    dueWeekday: nil,
+                    dueDate: nil,
+                    isPaid: false
+                )
+            )
+        }
+
+        return result
     }
 }
 
-private struct PersistedState: Codable {
+struct PersistedState: Codable {
     let onboarding: OnboardingData
     let manualMonthlyLimit: Double?
     let desiredSavingsRate: Double
@@ -607,6 +890,9 @@ private struct PersistedState: Codable {
     let weeklyNotes: [String: String]
     let pinnedTransactionIds: Set<UUID>
     let monthlyNotes: [String: String]
+    let hiddenBudgetItemIdsByMonth: [String: Set<UUID>]
+    let fixedBillActualOverridesByMonth: [String: [UUID: Double]]
+    let fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]]
     let budgetItems: [BudgetItem]
     let transactions: [TransactionItem]
 
@@ -620,6 +906,9 @@ private struct PersistedState: Codable {
         case weeklyNotes
         case pinnedTransactionIds
         case monthlyNotes
+        case hiddenBudgetItemIdsByMonth
+        case fixedBillActualOverridesByMonth
+        case fixedBillPaymentTransactionIdsByMonth
         case budgetItems
         case transactions
     }
@@ -634,6 +923,9 @@ private struct PersistedState: Codable {
         weeklyNotes: [String: String],
         pinnedTransactionIds: Set<UUID>,
         monthlyNotes: [String: String],
+        hiddenBudgetItemIdsByMonth: [String: Set<UUID>],
+        fixedBillActualOverridesByMonth: [String: [UUID: Double]],
+        fixedBillPaymentTransactionIdsByMonth: [String: [UUID: UUID]],
         budgetItems: [BudgetItem],
         transactions: [TransactionItem]
     ) {
@@ -646,6 +938,9 @@ private struct PersistedState: Codable {
         self.weeklyNotes = weeklyNotes
         self.pinnedTransactionIds = pinnedTransactionIds
         self.monthlyNotes = monthlyNotes
+        self.hiddenBudgetItemIdsByMonth = hiddenBudgetItemIdsByMonth
+        self.fixedBillActualOverridesByMonth = fixedBillActualOverridesByMonth
+        self.fixedBillPaymentTransactionIdsByMonth = fixedBillPaymentTransactionIdsByMonth
         self.budgetItems = budgetItems
         self.transactions = transactions
     }
@@ -661,6 +956,9 @@ private struct PersistedState: Codable {
         weeklyNotes = try container.decode([String: String].self, forKey: .weeklyNotes)
         pinnedTransactionIds = try container.decodeIfPresent(Set<UUID>.self, forKey: .pinnedTransactionIds) ?? []
         monthlyNotes = try container.decodeIfPresent([String: String].self, forKey: .monthlyNotes) ?? [:]
+        hiddenBudgetItemIdsByMonth = try container.decodeIfPresent([String: Set<UUID>].self, forKey: .hiddenBudgetItemIdsByMonth) ?? [:]
+        fixedBillActualOverridesByMonth = try container.decodeIfPresent([String: [UUID: Double]].self, forKey: .fixedBillActualOverridesByMonth) ?? [:]
+        fixedBillPaymentTransactionIdsByMonth = try container.decodeIfPresent([String: [UUID: UUID]].self, forKey: .fixedBillPaymentTransactionIdsByMonth) ?? [:]
         budgetItems = try container.decode([BudgetItem].self, forKey: .budgetItems)
         transactions = try container.decode([TransactionItem].self, forKey: .transactions)
     }
