@@ -5,7 +5,6 @@ struct TransactionsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var filter: TransactionFilter = .all
     @State private var searchText: String = ""
-    @State private var archivedIds: Set<UUID> = []
     @State private var completedIds: Set<UUID> = []
     @State private var markedIds: Set<UUID> = []
     @State private var moreActionsTarget: TransactionItem?
@@ -129,8 +128,7 @@ struct TransactionsView: View {
             filteredByType = appState.transactions.filter { $0.type == .income }
         }
 
-        let withoutArchived = filteredByType.filter { !archivedIds.contains($0.id) }
-        let sortedPinnedFirst = withoutArchived.sorted { lhs, rhs in
+        let sortedPinnedFirst = filteredByType.sorted { lhs, rhs in
             let leftPinned = appState.pinnedTransactionIds.contains(lhs.id)
             let rightPinned = appState.pinnedTransactionIds.contains(rhs.id)
             if leftPinned != rightPinned {
@@ -220,7 +218,6 @@ struct TransactionsView: View {
             isPinned: appState.pinnedTransactionIds.contains(id),
             isCompleted: completedIds.contains(id),
             isMarked: markedIds.contains(id),
-            onArchive: { archivedIds.insert(id) },
             onPin: { togglePinned(id) },
             onComplete: { toggleCompleted(id) },
             onMark: { toggleMarked(id) },
@@ -249,7 +246,6 @@ private struct TransactionListRow: View {
     let isPinned: Bool
     let isCompleted: Bool
     let isMarked: Bool
-    let onArchive: () -> Void
     let onPin: () -> Void
     let onComplete: () -> Void
     let onMark: () -> Void
@@ -273,10 +269,6 @@ private struct TransactionListRow: View {
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
             }
-            Button(action: onArchive) {
-                Label("Archive", systemImage: "archivebox")
-            }
-            .tint(.gray)
             Button(action: onMore) {
                 Label("More", systemImage: "ellipsis")
             }

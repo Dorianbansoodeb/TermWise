@@ -334,12 +334,6 @@ struct DashboardView: View {
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
-                    Button {
-                        onArchive(item.id)
-                    } label: {
-                        Label("Archive", systemImage: "archivebox")
-                    }
-                    .tint(.gray)
                 }
                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
                     Button {
@@ -448,9 +442,6 @@ struct DashboardView: View {
         if set.contains(id) { set.remove(id) } else { set.insert(id) }
     }
 
-    private func onArchive(_ id: UUID) {
-        _ = appState.removeTransaction(id: id)
-    }
 }
 
 private enum SavedHistoryMode: String, CaseIterable, Identifiable {
