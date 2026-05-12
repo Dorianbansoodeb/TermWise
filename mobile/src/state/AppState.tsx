@@ -70,6 +70,8 @@ export interface AppContextValue {
   }): TransactionItem;
   removeTransaction(id: string, opts?: { withUndo?: boolean }): void;
   markBillAsPaid(billId: string): void;
+  /** Patch any subset of a BudgetItem (name / planned limit / dueDay / etc.). */
+  updateBudgetItem(id: string, patch: Partial<Omit<BudgetItem, 'id'>>): void;
   setAvailableToBudget(amount: number): void;
   setSavingsTarget(amount: number | undefined): void;
   setDesiredSavingsRate(rate: number): void;
@@ -308,6 +310,25 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [budgetItems, transactions, referenceDate, scheduleUndo]
   );
 
+  const updateBudgetItem = useCallback<AppContextValue['updateBudgetItem']>(
+    (id, patch) => {
+      setBudgetItems((prev) =>
+        prev.map((item) => {
+          if (item.id !== id) return item;
+          const next: BudgetItem = { ...item, ...patch, id: item.id };
+          if (typeof next.planned === 'number') {
+            next.planned = Math.max(0, next.planned);
+          }
+          if (typeof next.category === 'string') {
+            next.category = next.category.trim() || item.category;
+          }
+          return next;
+        })
+      );
+    },
+    []
+  );
+
   const setAvailableToBudget = useCallback<AppContextValue['setAvailableToBudget']>(
     (amount) => {
       updateSettings({ availableToBudget: Math.max(0, amount) });
@@ -384,6 +405,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     addTransaction,
     removeTransaction,
     markBillAsPaid,
+    updateBudgetItem,
     setAvailableToBudget,
     setSavingsTarget,
     setDesiredSavingsRate,

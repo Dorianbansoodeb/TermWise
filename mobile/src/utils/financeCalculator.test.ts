@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { BudgetItem } from '../types/models';
+import type { BudgetItem, TransactionItem } from '../types/models';
 import {
+  actualSpentForCategory,
   budgetDifference,
   totalBudgeted,
   unallocatedRow,
-  usableBudgetAfterSavings
+  usableBudgetAfterSavings,
+  variableCategoryProgress
 } from './financeCalculator';
 
 const mk = (
@@ -102,5 +104,124 @@ describe('usableBudgetAfterSavings (charts-only spend limit)', () => {
     expect(usableBudgetAfterSavings(1800, 270)).toBe(1530);
     expect(usableBudgetAfterSavings(1800, 0)).toBe(1800);
     expect(usableBudgetAfterSavings(1800, 5000)).toBe(0);
+  });
+});
+
+// --- Variable Spending per-category progress ---
+
+const REF = new Date('2026-05-15T12:00:00.000Z');
+
+const mkVar = (id: string, category: string, planned: number): BudgetItem =>
+  mk(id, category, planned, 'variable');
+
+const mkExpense = (
+  id: string,
+  category: string,
+  amount: number,
+  isoDate: string
+): TransactionItem => ({
+  id,
+  amount,
+  name: category,
+  category,
+  note: '',
+  date: isoDate,
+  createdAt: isoDate,
+  type: 'expense',
+  savedApplied: 0,
+  undoable: false
+});
+
+describe('actualSpentForCategory', () => {
+  it('sums case-insensitive matches inside the current month only', () => {
+    const txns: TransactionItem[] = [
+      mkExpense('a', 'Groceries', 42, '2026-05-02T10:00:00Z'),
+      mkExpense('b', 'groceries', 90.5, '2026-05-10T10:00:00Z'),
+      // different month — must be excluded:
+      mkExpense('c', 'Groceries', 100, '2026-04-30T10:00:00Z'),
+      // different category — must be excluded:
+      mkExpense('d', 'Eating Out', 25, '2026-05-11T10:00:00Z')
+    ];
+    expect(actualSpentForCategory('Groceries', txns, REF)).toBe(132.5);
+  });
+
+  it('returns 0 for an empty category name', () => {
+    expect(actualSpentForCategory('  ', [], REF)).toBe(0);
+  });
+});
+
+describe('variableCategoryProgress', () => {
+  it('under limit: percentUsed = actual / limit, status onTrack, remaining = limit − actual', () => {
+    // Groceries example from spec: actual=$132.50 / limit=$280 → 47%
+    const item = mkVar('g', 'Groceries', 280);
+    const txns: TransactionItem[] = [
+      mkExpense('a', 'Groceries', 42, '2026-05-02T10:00:00Z'),
+      mkExpense('b', 'Groceries', 90.5, '2026-05-10T10:00:00Z')
+    ];
+    const p = variableCategoryProgress(item, txns, REF);
+    expect(p.planned).toBe(280);
+    expect(p.actual).toBe(132.5);
+    expect(Math.round(p.percentUsed * 100)).toBe(47);
+    expect(p.displayProgress).toBeCloseTo(132.5 / 280, 5);
+    expect(p.remaining).toBe(147.5);
+    expect(p.over).toBe(0);
+    expect(p.status).toBe('onTrack');
+  });
+
+  it('over limit: status overBudget, displayProgress capped at 1, over = actual − limit', () => {
+    // Coffee example from spec: limit=$40, actual=$55 → over by $15, bar pinned to 100%
+    const item = mkVar('c', 'Coffee', 40);
+    const txns: TransactionItem[] = [
+      mkExpense('a', 'Coffee', 30, '2026-05-04T10:00:00Z'),
+      mkExpense('b', 'Coffee', 25, '2026-05-12T10:00:00Z')
+    ];
+    const p = variableCategoryProgress(item, txns, REF);
+    expect(p.planned).toBe(40);
+    expect(p.actual).toBe(55);
+    expect(p.percentUsed).toBeCloseTo(55 / 40, 5);
+    expect(p.displayProgress).toBe(1);
+    expect(p.remaining).toBe(0);
+    expect(p.over).toBe(15);
+    expect(p.status).toBe('overBudget');
+  });
+
+  it('exactly at the limit: onTrack with 0 remaining and 0 over', () => {
+    const item = mkVar('f', 'Fun', 100);
+    const txns: TransactionItem[] = [mkExpense('a', 'Fun', 100, '2026-05-07T10:00:00Z')];
+    const p = variableCategoryProgress(item, txns, REF);
+    expect(p.status).toBe('onTrack');
+    expect(p.percentUsed).toBe(1);
+    expect(p.displayProgress).toBe(1);
+    expect(p.remaining).toBe(0);
+    expect(p.over).toBe(0);
+  });
+
+  it('zero monthly limit: percentUsed/displayProgress are 0 (no division by zero)', () => {
+    const item = mkVar('s', 'Shopping', 0);
+    const txns: TransactionItem[] = [
+      mkExpense('a', 'Shopping', 25, '2026-05-09T10:00:00Z')
+    ];
+    const p = variableCategoryProgress(item, txns, REF);
+    expect(p.percentUsed).toBe(0);
+    expect(p.displayProgress).toBe(0);
+    // Any spend against a $0 limit still counts as over budget by the spend amount.
+    expect(p.over).toBe(25);
+    expect(p.status).toBe('overBudget');
+  });
+
+  it('editing the monthly limit flips status without re-spending: $55 actual vs new $80 limit → onTrack', () => {
+    // Simulates the AppState.updateBudgetItem({ planned: 80 }) flow: re-call the
+    // helper with the patched item and the same transactions.
+    const txns: TransactionItem[] = [
+      mkExpense('a', 'Coffee', 30, '2026-05-04T10:00:00Z'),
+      mkExpense('b', 'Coffee', 25, '2026-05-12T10:00:00Z')
+    ];
+    const before = variableCategoryProgress(mkVar('c', 'Coffee', 40), txns, REF);
+    const after = variableCategoryProgress(mkVar('c', 'Coffee', 80), txns, REF);
+    expect(before.status).toBe('overBudget');
+    expect(after.status).toBe('onTrack');
+    expect(after.remaining).toBe(25);
+    expect(after.over).toBe(0);
+    expect(after.displayProgress).toBeCloseTo(55 / 80, 5);
   });
 });

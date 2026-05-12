@@ -204,6 +204,66 @@ export function recurringBillsForMonth(
     });
 }
 
+// MARK: - 4a. Per-variable-category progress
+
+export type VariableCategoryStatus = 'onTrack' | 'overBudget';
+
+export interface VariableCategoryProgress {
+  /** Monthly limit for the variable category (from `BudgetItem.planned`). */
+  planned: number;
+  /** Net expense spent against this category this calendar month. */
+  actual: number;
+  /** Raw `actual / planned` (uncapped). `0` when there is no limit yet. */
+  percentUsed: number;
+  /** `min(1, percentUsed)` — what the thin bar should render. */
+  displayProgress: number;
+  /** `max(0, planned − actual)` — remaining headroom when on track. */
+  remaining: number;
+  /** `max(0, actual − planned)` — overspend amount when over budget. */
+  over: number;
+  /** Card status badge: `onTrack` when `actual ≤ planned`, else `overBudget`. */
+  status: VariableCategoryStatus;
+}
+
+/// Sum of net-expense transactions whose category matches `category`
+/// (case-insensitive exact match) inside `referenceDate`'s month. Used to
+/// drive a single Variable Spending card without leaking spend from
+/// neighbouring categories.
+export function actualSpentForCategory(
+  category: string,
+  transactions: TransactionItem[],
+  referenceDate: Date
+): number {
+  const target = category.trim().toLowerCase();
+  if (target === '') return 0;
+  return transactions
+    .filter((t) => {
+      if (t.type !== 'expense') return false;
+      if (!isSameMonth(parseDate(t.date), referenceDate)) return false;
+      return t.category.trim().toLowerCase() === target;
+    })
+    .reduce((acc, t) => acc + netExpenseAmount(t), 0);
+}
+
+/// Per-category roll-up driving the Variable Spending card UI: planned,
+/// actual, capped progress, remaining/over, and an `onTrack`/`overBudget`
+/// status badge. Spend is taken from `actualSpentForCategory` so flexible
+/// categories don't accidentally count Mark-as-Paid fixed-bill expenses.
+export function variableCategoryProgress(
+  item: BudgetItem,
+  transactions: TransactionItem[],
+  referenceDate: Date
+): VariableCategoryProgress {
+  const planned = Math.max(0, item.planned);
+  const actual = actualSpentForCategory(item.category, transactions, referenceDate);
+  const percentUsed = planned > 0 ? actual / planned : 0;
+  const displayProgress = planned > 0 ? Math.min(1, percentUsed) : 0;
+  const remaining = Math.max(0, planned - actual);
+  const over = Math.max(0, actual - planned);
+  const status: VariableCategoryStatus = actual > planned ? 'overBudget' : 'onTrack';
+  return { planned, actual, percentUsed, displayProgress, remaining, over, status };
+}
+
 // MARK: - 4. Variable spending pace
 
 export type VariableRiskStatus = 'onTrack' | 'watch' | 'overBudgetRisk';

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppState } from '../state/AppState';
@@ -6,13 +6,16 @@ import { useTheme } from '../theme/useTheme';
 import { SPACING } from '../theme/tokens';
 import {
   recurringBillsForMonth,
-  totalIncomeThisMonth
+  totalIncomeThisMonth,
+  variableCategoryProgress
 } from '../utils/financeCalculator';
 import { BudgetEnvelopeCard } from '../components/BudgetEnvelopeCard';
 import { SavingsTargetCard } from '../components/SavingsTargetCard';
 import { MonthlySnapshotCard } from '../components/MonthlySnapshotCard';
 import { Card } from '../components/Card';
 import { BillRow } from '../components/BillRow';
+import { VariableCategoryRow } from '../components/VariableCategoryRow';
+import { EditVariableCategorySheet } from '../components/EditVariableCategorySheet';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { formatCurrency } from '../utils/format';
 import { colorForCategory } from '../utils/categories';
@@ -26,12 +29,15 @@ export function BudgetScreen() {
     availableToBudget,
     savingsTarget,
     markBillAsPaid,
+    updateBudgetItem,
     referenceDate,
     setAvailableToBudget,
     setSavingsTarget,
     setDesiredSavingsRate,
     resetToDemo
   } = useAppState();
+
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const totalIncome = totalIncomeThisMonth(transactions, referenceDate);
   const recurringBills = useMemo(
@@ -95,33 +101,24 @@ export function BudgetScreen() {
         <View>
           <Text style={[styles.section, { color: theme.text }]}>Variable Spending</Text>
           <Text style={[styles.helper, { color: theme.textMuted }]}>
-            Flexible categories. These drive your Variable Spending Trend pace.
+            Flexible categories. Each card shows progress toward its monthly limit.
           </Text>
-          <Card>
-            {variableItems.map((item, idx) => (
-              <View
-                key={item.id}
-                style={[
-                  styles.budgetRow,
-                  idx > 0 && {
-                    borderTopWidth: StyleSheet.hairlineWidth,
-                    borderTopColor: theme.border
-                  }
-                ]}
-              >
-                <View style={[styles.dot, { backgroundColor: colorForCategory(item.category) }]} />
-                <Text style={[styles.rowLabel, { color: theme.text }]}>{item.category}</Text>
-                <Text style={[styles.rowValue, { color: theme.textMuted }]}>
-                  {formatCurrency(item.planned, { compact: true })}
-                </Text>
-              </View>
-            ))}
-            {variableItems.length === 0 && (
+          {variableItems.length === 0 ? (
+            <Card>
               <Text style={[styles.empty, { color: theme.textMuted }]}>
                 Add a variable category to track flexible spending.
               </Text>
-            )}
-          </Card>
+            </Card>
+          ) : (
+            variableItems.map((item) => (
+              <VariableCategoryRow
+                key={item.id}
+                item={item}
+                progress={variableCategoryProgress(item, transactions, referenceDate)}
+                onEdit={() => setEditingId(item.id)}
+              />
+            ))
+          )}
         </View>
 
         <View>
@@ -171,6 +168,16 @@ export function BudgetScreen() {
           <PrimaryButton title="Reset to Demo Data" variant="danger" onPress={resetToDemo} />
         </Card>
       </ScrollView>
+
+      <EditVariableCategorySheet
+        visible={editingId !== null}
+        item={variableItems.find((b) => b.id === editingId) ?? null}
+        onCancel={() => setEditingId(null)}
+        onSave={(patch) => {
+          if (editingId) updateBudgetItem(editingId, patch);
+          setEditingId(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
