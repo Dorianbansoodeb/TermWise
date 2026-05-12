@@ -58,24 +58,28 @@ export function isVariableTransactionCategory(
   return isVariableCategoryName(transactionCategory);
 }
 
-/// Preset categories surfaced in Quick Add. Order matches iOS.
+/// Preset categories surfaced in Quick Add. Aligned with the spec for the
+/// React Native migration — order matters because the first entry is the
+/// default selection when toggling expense/income.
 export const PRESET_EXPENSE_CATEGORIES: string[] = [
   'Groceries',
   'Eating Out',
   'Coffee',
   'Transportation',
-  'Fun',
-  'Shopping',
   'Rent',
   'Phone',
-  'Subscriptions',
+  'Tuition/Savings',
+  'Fun',
+  'Shopping',
   'Other'
 ];
 
 export const PRESET_INCOME_CATEGORIES: string[] = [
-  'Paycheck',
   'Co-op Pay',
-  'Side Gig',
+  'Part-time Job',
   'Gift',
+  'Scholarship',
+  'Loan/OSAP',
+  'Refund',
   'Other'
 ];

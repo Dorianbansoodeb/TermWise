@@ -183,6 +183,30 @@ export function fixedBillStatus(planned: number, actual: number): FixedBillStatu
   return 'paid';
 }
 
+/// Find a fixed `BudgetItem` that should be credited when an expense is
+/// recorded under `category`. Uses a forgiving normaliser ("Tuition/Savings"
+/// → "tuitionsavings", "Phone" → "phone") so Quick Add preset labels with
+/// punctuation still attach cleanly to the user's existing bills. Returns
+/// `undefined` when no fixed bill matches; the caller should fall back to
+/// plain category-name accounting (which is what variable categories use).
+export function findFixedBillForCategory(
+  category: string,
+  budgetItems: BudgetItem[]
+): BudgetItem | undefined {
+  const target = normalizeCategoryKey(category);
+  if (!target) return undefined;
+  return budgetItems.find((b) => {
+    if (b.budgetType !== 'fixed') return false;
+    const key = normalizeCategoryKey(b.category);
+    if (!key) return false;
+    return key === target || key.includes(target) || target.includes(key);
+  });
+}
+
+function normalizeCategoryKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
 export function recurringBillsForMonth(
   budgetItems: BudgetItem[],
   transactions: TransactionItem[],

@@ -18,7 +18,8 @@ export function IncomePromptDialog() {
           <Text style={[styles.title, { color: theme.text }]}>Add this income to your budget?</Text>
           <Text style={[styles.body, { color: theme.textMuted }]}>
             You recorded {formatCurrency(pendingIncomePrompt.amount)} as{' '}
-            {pendingIncomePrompt.categoryName}. Choose how it should affect this month's Available to Budget.
+            {pendingIncomePrompt.categoryName}. Choose how it should affect this month's
+            Available to Budget. Tap Cancel to undo the income entry.
           </Text>
           <PrimaryButton
             title="Add to Budget"

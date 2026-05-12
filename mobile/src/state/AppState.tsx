@@ -23,6 +23,7 @@ import { monthKey } from '../utils/date';
 import {
   actualPaidForBill,
   availableToBudgetForMonth,
+  netExpenseAmount,
   resolvedSavingsTarget
 } from '../utils/financeCalculator';
 
@@ -257,9 +258,29 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           categoryName: txn.category
         });
       }
+      // When an expense lands on a recurring bill and that payment finishes
+      // off the planned amount, surface the same "Fully paid X" success +
+      // undo snackbar that Mark-as-Paid uses. Undo simply removes the
+      // synthetic transaction (mirrors the existing markBillAsPaid flow).
+      if (txn.type === 'expense' && txn.billId) {
+        const bill = budgetItems.find(
+          (b) => b.id === txn.billId && b.budgetType === 'fixed'
+        );
+        if (bill) {
+          const priorPaid = actualPaidForBill(bill, transactions, referenceDate);
+          const newPaid = priorPaid + netExpenseAmount(txn);
+          if (priorPaid < bill.planned && newPaid >= bill.planned) {
+            scheduleUndo({
+              message: `Fully paid ${bill.category}`,
+              action: { kind: 'undoMarkAsPaid', billId: bill.id, transactionId: txn.id },
+              createdAt: Date.now()
+            });
+          }
+        }
+      }
       return txn;
     },
-    []
+    [budgetItems, transactions, referenceDate, scheduleUndo]
   );
 
   const removeTransaction = useCallback<AppContextValue['removeTransaction']>(
@@ -364,6 +385,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       const prompt = pendingIncomePrompt;
       if (!prompt) return;
       if (choice === 'cancel') {
+        // Cancel undoes the income transaction outright — the user did not
+        // mean to record it. (Per Quick Add spec: "Prefer canceling the
+        // income add if easier.")
+        setTransactions((prev) => prev.filter((t) => t.id !== prompt.transactionId));
         setPendingIncomePrompt(null);
         return;
       }

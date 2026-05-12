@@ -4,6 +4,7 @@ import {
   actualPaidForBill,
   actualSpentForCategory,
   budgetDifference,
+  findFixedBillForCategory,
   recurringBillsForMonth,
   totalBudgeted,
   unallocatedRow,
@@ -324,5 +325,38 @@ describe('recurring bill edits (via updateBudgetItem patch shape)', () => {
     const patched: BudgetItem = { ...bill, dueDay: undefined };
     const rolled = recurringBillsForMonth([patched], [], REF).find((b) => b.id === 'rent')!;
     expect(rolled.dueDay).toBeUndefined();
+  });
+});
+
+// --- Quick Add: bill attribution ---
+
+describe('findFixedBillForCategory', () => {
+  const budgetItems: BudgetItem[] = [
+    mkFixed('rent', 'Rent', 900, { dueDay: 1 }),
+    mkFixed('phone', 'Phone', 55, { dueDay: 15 }),
+    mkFixed('tuition', 'Tuition Savings', 250, { dueDay: 28 }),
+    mkVar('groc', 'Groceries', 280),
+    mkVar('coffee', 'Coffee', 40)
+  ];
+
+  it('matches an exact fixed-bill category name', () => {
+    expect(findFixedBillForCategory('Rent', budgetItems)?.id).toBe('rent');
+    expect(findFixedBillForCategory('Phone', budgetItems)?.id).toBe('phone');
+  });
+
+  it('matches case-insensitively', () => {
+    expect(findFixedBillForCategory('rent', budgetItems)?.id).toBe('rent');
+    expect(findFixedBillForCategory('PHONE', budgetItems)?.id).toBe('phone');
+  });
+
+  it('matches even when punctuation differs ("Tuition/Savings" preset vs "Tuition Savings" bill)', () => {
+    expect(findFixedBillForCategory('Tuition/Savings', budgetItems)?.id).toBe('tuition');
+  });
+
+  it('returns undefined for variable / unknown categories', () => {
+    expect(findFixedBillForCategory('Groceries', budgetItems)).toBeUndefined();
+    expect(findFixedBillForCategory('Coffee', budgetItems)).toBeUndefined();
+    expect(findFixedBillForCategory('Mystery', budgetItems)).toBeUndefined();
+    expect(findFixedBillForCategory('', budgetItems)).toBeUndefined();
   });
 });
