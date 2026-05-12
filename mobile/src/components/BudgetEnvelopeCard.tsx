@@ -1,10 +1,12 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card } from './Card';
+import { PrimaryButton } from './PrimaryButton';
 import { useTheme } from '../theme/useTheme';
-import { SPACING } from '../theme/tokens';
+import { RADIUS, SPACING } from '../theme/tokens';
 import { formatCurrency } from '../utils/format';
 import {
+  availableToBudgetWarning,
   budgetDifference,
   budgetingOverIncomeAmount,
   reserveNotBudgeted,
@@ -18,13 +20,15 @@ interface BudgetEnvelopeCardProps {
   availableToBudget: number;
   savingsTarget: number;
   budgetItems: BudgetItem[];
+  onSaveAvailableToBudget: (amount: number) => void;
 }
 
 export function BudgetEnvelopeCard({
   totalIncome,
   availableToBudget,
   savingsTarget,
-  budgetItems
+  budgetItems,
+  onSaveAvailableToBudget
 }: BudgetEnvelopeCardProps) {
   const theme = useTheme();
   const totalBudgetedValue = totalBudgeted(budgetItems, savingsTarget);
@@ -34,17 +38,64 @@ export function BudgetEnvelopeCard({
   const isOverIncome = overIncome > 0;
   const row = unallocatedRow(availableToBudget, totalBudgetedValue);
 
+  const [draft, setDraft] = useState(formatDraft(availableToBudget));
+  useEffect(() => {
+    setDraft(formatDraft(availableToBudget));
+  }, [availableToBudget]);
+
+  const liveAvailable = useMemo(() => {
+    const trimmed = draft.trim();
+    if (trimmed === '') return availableToBudget;
+    const parsed = parseFloat(trimmed);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : availableToBudget;
+  }, [draft, availableToBudget]);
+
+  const overIncomeWarning = useMemo(
+    () => availableToBudgetWarning(totalIncome, liveAvailable),
+    [totalIncome, liveAvailable]
+  );
+
+  const onSave = () => {
+    const trimmed = draft.trim();
+    const value = trimmed === '' ? 0 : parseFloat(trimmed);
+    if (!Number.isFinite(value)) return;
+    onSaveAvailableToBudget(Math.max(0, value));
+  };
+
   return (
     <Card>
       <Text style={[styles.title, { color: theme.text }]}>Budget Envelope</Text>
       <Text style={[styles.subtitle, { color: theme.textMuted }]}>
         How your income flows through the budget this month.
       </Text>
+
       <Row label="Total Income" value={formatCurrency(totalIncome)} muted />
-      <Row label="Available to Budget" value={formatCurrency(availableToBudget)} emphasis />
+
+      <Text style={[styles.editorLabel, { color: theme.textMuted }]}>Available to Budget</Text>
+      <Text style={[styles.editorHelper, { color: theme.textMuted }]}>
+        Choose how much of your income you want to plan with this month.
+      </Text>
+      <TextInput
+        value={draft}
+        onChangeText={setDraft}
+        keyboardType="decimal-pad"
+        style={[
+          styles.input,
+          {
+            color: theme.text,
+            borderColor: overIncomeWarning ? theme.danger : theme.border,
+            backgroundColor: theme.surface
+          }
+        ]}
+        placeholder="0"
+        placeholderTextColor={theme.textMuted}
+      />
+      {overIncomeWarning ? (
+        <Text style={[styles.warningText, { color: theme.danger }]}>{overIncomeWarning}</Text>
+      ) : null}
+      <PrimaryButton title="Save Available to Budget" onPress={onSave} style={{ marginBottom: SPACING.md }} />
+
       {isOverIncome ? (
-        // Replaces "Reserve / Not Budgeted" — showing $0 reserve in this
-        // case is confusing; the user is over-committing, not parking income.
         <Row
           label="Budgeting Over Income"
           value={formatCurrency(overIncome)}
@@ -53,6 +104,7 @@ export function BudgetEnvelopeCard({
       ) : (
         <Row label="Reserve / Not Budgeted" value={formatCurrency(reserve)} muted />
       )}
+
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
       <Row label="Total Budgeted" value={formatCurrency(totalBudgetedValue)} />
       <Row
@@ -65,6 +117,11 @@ export function BudgetEnvelopeCard({
       </Text>
     </Card>
   );
+}
+
+function formatDraft(value: number): string {
+  if (!Number.isFinite(value)) return '';
+  return value.toFixed(0);
 }
 
 interface RowProps {
@@ -111,7 +168,34 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 12,
     marginTop: 2,
-    marginBottom: SPACING.md
+    marginBottom: SPACING.sm
+  },
+  editorLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginTop: SPACING.sm
+  },
+  editorHelper: {
+    fontSize: 12,
+    marginTop: 4,
+    marginBottom: SPACING.xs
+  },
+  input: {
+    borderRadius: RADIUS.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    marginBottom: SPACING.sm,
+    fontSize: 15
+  },
+  warningText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: -SPACING.xs,
+    marginBottom: SPACING.sm,
+    lineHeight: 16
   },
   row: {
     flexDirection: 'row',

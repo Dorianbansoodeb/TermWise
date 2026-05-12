@@ -10,8 +10,10 @@ import {
 } from '../utils/financeCalculator';
 import { BudgetEnvelopeCard } from '../components/BudgetEnvelopeCard';
 import { SavingsTargetCard } from '../components/SavingsTargetCard';
+import { MonthlySnapshotCard } from '../components/MonthlySnapshotCard';
 import { Card } from '../components/Card';
 import { BillRow } from '../components/BillRow';
+import { PrimaryButton } from '../components/PrimaryButton';
 import { formatCurrency } from '../utils/format';
 import { colorForCategory } from '../utils/categories';
 
@@ -24,7 +26,11 @@ export function BudgetScreen() {
     availableToBudget,
     savingsTarget,
     markBillAsPaid,
-    referenceDate
+    referenceDate,
+    setAvailableToBudget,
+    setSavingsTarget,
+    setDesiredSavingsRate,
+    resetToDemo
   } = useAppState();
 
   const totalIncome = totalIncomeThisMonth(transactions, referenceDate);
@@ -46,12 +52,30 @@ export function BudgetScreen() {
           availableToBudget={availableToBudget}
           savingsTarget={savingsTarget}
           budgetItems={budgetItems}
+          onSaveAvailableToBudget={setAvailableToBudget}
         />
 
         <SavingsTargetCard
           availableToBudget={availableToBudget}
           savingsTarget={savingsTarget}
           desiredSavingsRate={settingsForMonth.desiredSavingsRate}
+          customSavingsTarget={settingsForMonth.customSavingsTarget}
+          onSelectRate={(rate) => {
+            if (settingsForMonth.customSavingsTarget !== undefined) {
+              setSavingsTarget(undefined);
+            }
+            setDesiredSavingsRate(rate);
+          }}
+          onSaveCustomTarget={(amount) => setSavingsTarget(amount)}
+          onClearCustomTarget={() => setSavingsTarget(undefined)}
+        />
+
+        <MonthlySnapshotCard
+          transactions={transactions}
+          budgetItems={budgetItems}
+          availableToBudget={availableToBudget}
+          savingsTarget={savingsTarget}
+          referenceDate={referenceDate}
         />
 
         <View>
@@ -141,6 +165,14 @@ export function BudgetScreen() {
             )}
           </Card>
         </View>
+
+        <Card>
+          <Text style={[styles.section, { color: theme.text }]}>Data</Text>
+          <Text style={[styles.helper, { color: theme.textMuted }]}>
+            Reset the local snapshot to the bundled student demo. This clears AsyncStorage.
+          </Text>
+          <PrimaryButton title="Reset to Demo Data" variant="danger" onPress={resetToDemo} />
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
@@ -152,7 +184,8 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: SPACING.lg,
-    gap: SPACING.lg
+    gap: SPACING.lg,
+    paddingBottom: SPACING.xxl * 2
   },
   title: {
     fontSize: 26,
