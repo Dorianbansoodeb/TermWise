@@ -73,21 +73,35 @@ export function budgetingOverIncomeAmount(
 
 // MARK: - 2. Budget difference / allocation
 
-/// `recurring bills + variable spending limits + savings target`.
-export function totalBudgeted(budgetItems: BudgetItem[], savingsTarget: number): number {
+/// Planned spending only: **recurring / fixed bills + variable category limits**.
+/// Does **not** include the Savings Target dollar amount — that is reserved
+/// separately from the same `availableToBudget` pool (see `remainingAfterPlan`).
+export function totalBudgeted(budgetItems: BudgetItem[]): number {
   const recurring = budgetItems
     .filter((b) => b.budgetType === 'fixed')
     .reduce((acc, b) => acc + Math.max(0, b.planned), 0);
   const variable = budgetItems
     .filter((b) => b.budgetType === 'variable')
     .reduce((acc, b) => acc + Math.max(0, b.planned), 0);
-  return recurring + variable + Math.max(0, savingsTarget);
+  return recurring + variable;
 }
 
-/// `availableToBudget − totalBudgeted`. Positive = unallocated headroom;
-/// negative = over-allocated.
-export function budgetDifference(availableToBudget: number, totalBudgeted: number): number {
-  return availableToBudget - totalBudgeted;
+/// `availableToBudget − totalBudgetedPlanned − savingsTarget`.
+/// Positive = unallocated headroom after planned spending **and** the
+/// envelope savings reservation; negative = over-committed vs available.
+export function remainingAfterPlan(
+  availableToBudget: number,
+  totalBudgetedPlanned: number,
+  savingsTarget: number
+): number {
+  return availableToBudget - totalBudgetedPlanned - Math.max(0, savingsTarget);
+}
+
+/// `availableToBudget − totalBudgeted` where `totalBudgeted` is planned
+/// spending only (fixed + variable). Does **not** subtract savings — prefer
+/// `remainingAfterPlan` for envelope headroom.
+export function budgetDifference(availableToBudget: number, totalBudgetedPlanned: number): number {
+  return availableToBudget - totalBudgetedPlanned;
 }
 
 export interface UnallocatedRow {
@@ -96,8 +110,12 @@ export interface UnallocatedRow {
   isOver: boolean;
 }
 
-export function unallocatedRow(availableToBudget: number, totalBudgetedValue: number): UnallocatedRow {
-  const diff = availableToBudget - totalBudgetedValue;
+export function unallocatedRow(
+  availableToBudget: number,
+  totalBudgetedPlanned: number,
+  savingsTarget: number
+): UnallocatedRow {
+  const diff = remainingAfterPlan(availableToBudget, totalBudgetedPlanned, savingsTarget);
   if (diff >= 0) {
     return { label: 'Unallocated Budget', value: diff, isOver: false };
   }

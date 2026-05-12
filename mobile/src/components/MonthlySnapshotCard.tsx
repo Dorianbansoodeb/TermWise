@@ -9,6 +9,7 @@ import {
   recurringBillsForMonth,
   totalBudgeted,
   totalExpensesThisMonth,
+  unallocatedRow,
   variableSpent
 } from '../utils/financeCalculator';
 import type { BudgetItem, TransactionItem } from '../types/models';
@@ -29,7 +30,7 @@ export function MonthlySnapshotCard({
   referenceDate
 }: MonthlySnapshotCardProps) {
   const theme = useTheme();
-  const totalBudgetedValue = totalBudgeted(budgetItems, savingsTarget);
+  const totalBudgetedValue = totalBudgeted(budgetItems);
   const actualSpending = totalExpensesThisMonth(transactions, referenceDate);
   const varUsed = variableSpent(transactions, budgetItems, referenceDate);
   const bills = useMemo(
@@ -37,7 +38,7 @@ export function MonthlySnapshotCard({
     [budgetItems, transactions, referenceDate]
   );
   const paidCount = bills.filter((b) => b.status === 'paid').length;
-  const headroom = availableToBudget - actualSpending;
+  const planRow = unallocatedRow(availableToBudget, totalBudgetedValue, savingsTarget);
 
   return (
     <Card>
@@ -47,12 +48,15 @@ export function MonthlySnapshotCard({
       </Text>
       <SnapshotRow label="Available to Budget" value={formatCurrency(availableToBudget)} theme={theme} />
       <SnapshotRow label="Total Budgeted" value={formatCurrency(totalBudgetedValue)} theme={theme} />
+      <SnapshotRow label="Savings Target" value={formatCurrency(savingsTarget)} theme={theme} />
       <SnapshotRow label="Actual Spending" value={formatCurrency(actualSpending)} theme={theme} />
-      {headroom >= 0 ? (
-        <SnapshotRow label="Remaining" value={formatCurrency(headroom)} theme={theme} positive />
-      ) : (
-        <SnapshotRow label="Over Spent" value={formatCurrency(Math.abs(headroom))} theme={theme} danger />
-      )}
+      <SnapshotRow
+        label={planRow.label}
+        value={formatCurrency(planRow.value)}
+        theme={theme}
+        positive={!planRow.isOver}
+        danger={planRow.isOver}
+      />
       <SnapshotRow label="Variable Spending Used" value={formatCurrency(varUsed)} theme={theme} />
       <SnapshotRow
         label="Recurring Bills Paid"

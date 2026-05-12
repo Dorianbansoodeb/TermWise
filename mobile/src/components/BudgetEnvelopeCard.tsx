@@ -7,8 +7,8 @@ import { RADIUS, SPACING } from '../theme/tokens';
 import { formatCurrency } from '../utils/format';
 import {
   availableToBudgetWarning,
-  budgetDifference,
   budgetingOverIncomeAmount,
+  remainingAfterPlan,
   reserveNotBudgeted,
   totalBudgeted,
   unallocatedRow
@@ -31,12 +31,12 @@ export function BudgetEnvelopeCard({
   onSaveAvailableToBudget
 }: BudgetEnvelopeCardProps) {
   const theme = useTheme();
-  const totalBudgetedValue = totalBudgeted(budgetItems, savingsTarget);
-  const diff = budgetDifference(availableToBudget, totalBudgetedValue);
+  const totalBudgetedValue = totalBudgeted(budgetItems);
+  const planRemain = remainingAfterPlan(availableToBudget, totalBudgetedValue, savingsTarget);
   const reserve = reserveNotBudgeted(totalIncome, availableToBudget);
   const overIncome = budgetingOverIncomeAmount(totalIncome, availableToBudget);
   const isOverIncome = overIncome > 0;
-  const row = unallocatedRow(availableToBudget, totalBudgetedValue);
+  const row = unallocatedRow(availableToBudget, totalBudgetedValue, savingsTarget);
 
   const [draft, setDraft] = useState(formatDraft(availableToBudget));
   useEffect(() => {
@@ -107,13 +107,15 @@ export function BudgetEnvelopeCard({
 
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
       <Row label="Total Budgeted" value={formatCurrency(totalBudgetedValue)} />
+      <Row label="Savings Target" value={formatCurrency(savingsTarget)} muted />
       <Row
         label={row.label}
         value={formatCurrency(row.value)}
         tone={row.isOver ? 'danger' : 'positive'}
       />
       <Text style={[styles.helper, { color: theme.textMuted }]}>
-        Difference {formatCurrency(Math.abs(diff))} {diff >= 0 ? 'still to allocate' : 'over-allocated'}.
+        Difference {formatCurrency(Math.abs(planRemain))}{' '}
+        {planRemain >= 0 ? 'still to allocate' : 'over-allocated'}.
       </Text>
     </Card>
   );
