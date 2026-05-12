@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { BudgetItem, TransactionItem } from '../types/models';
 import {
+  actualPaidForBill,
   actualSpentForCategory,
   budgetDifference,
+  recurringBillsForMonth,
   totalBudgeted,
   unallocatedRow,
   usableBudgetAfterSavings,
@@ -223,5 +225,104 @@ describe('variableCategoryProgress', () => {
     expect(after.remaining).toBe(25);
     expect(after.over).toBe(0);
     expect(after.displayProgress).toBeCloseTo(55 / 80, 5);
+  });
+});
+
+// --- Recurring Bill edits ---
+
+const mkFixed = (
+  id: string,
+  category: string,
+  planned: number,
+  extras: Partial<BudgetItem> = {}
+): BudgetItem => ({
+  id,
+  category,
+  planned,
+  budgetType: 'fixed',
+  frequency: 'monthly',
+  ...extras
+});
+
+const mkBillExpense = (
+  id: string,
+  billId: string | undefined,
+  category: string,
+  amount: number,
+  isoDate: string
+): TransactionItem => ({
+  id,
+  amount,
+  name: category,
+  category,
+  note: '',
+  date: isoDate,
+  createdAt: isoDate,
+  type: 'expense',
+  savedApplied: 0,
+  billId,
+  source: billId ? 'markAsPaid' : undefined,
+  undoable: false
+});
+
+describe('recurring bill edits (via updateBudgetItem patch shape)', () => {
+  it('raising planned amount flips a previously-paid bill to partial', () => {
+    const bill = mkFixed('rent', 'Rent', 900, { dueDay: 1 });
+    const txns: TransactionItem[] = [
+      mkBillExpense('p1', 'rent', 'Rent', 900, '2026-05-01T09:00:00Z')
+    ];
+    const before = recurringBillsForMonth([bill], txns, REF).find((b) => b.id === 'rent')!;
+    expect(before.status).toBe('paid');
+    expect(before.actualPaid).toBe(900);
+
+    // Simulate AppState.updateBudgetItem('rent', { planned: 1200 })
+    const patched: BudgetItem = { ...bill, planned: 1200 };
+    const after = recurringBillsForMonth([patched], txns, REF).find((b) => b.id === 'rent')!;
+    expect(after.plannedAmount).toBe(1200);
+    expect(after.actualPaid).toBe(900);
+    expect(after.status).toBe('partial');
+  });
+
+  it('lowering planned amount can flip a partial bill to paid', () => {
+    const bill = mkFixed('phone', 'Phone', 80, { dueDay: 15 });
+    const txns: TransactionItem[] = [
+      mkBillExpense('p1', 'phone', 'Phone', 60, '2026-05-10T09:00:00Z')
+    ];
+    const before = recurringBillsForMonth([bill], txns, REF).find((b) => b.id === 'phone')!;
+    expect(before.status).toBe('partial');
+
+    const patched: BudgetItem = { ...bill, planned: 60 };
+    const after = recurringBillsForMonth([patched], txns, REF).find((b) => b.id === 'phone')!;
+    expect(after.status).toBe('paid');
+    expect(after.plannedAmount).toBe(60);
+  });
+
+  it('renaming a bill preserves attribution of payments linked by billId', () => {
+    const bill = mkFixed('phone', 'Phone', 80, { dueDay: 15 });
+    const txns: TransactionItem[] = [
+      mkBillExpense('p1', 'phone', 'Phone', 60, '2026-05-10T09:00:00Z')
+    ];
+    // Edit: rename "Phone" → "Mobile Plan"
+    const renamed: BudgetItem = { ...bill, category: 'Mobile Plan' };
+    expect(actualPaidForBill(renamed, txns, REF)).toBe(60);
+    const rolled = recurringBillsForMonth([renamed], txns, REF).find((b) => b.id === 'phone')!;
+    expect(rolled.category).toBe('Mobile Plan');
+    expect(rolled.actualPaid).toBe(60);
+  });
+
+  it('changing due day or frequency is surfaced by recurringBillsForMonth', () => {
+    const bill = mkFixed('rent', 'Rent', 900, { dueDay: 1 });
+    const patched: BudgetItem = { ...bill, dueDay: 15, frequency: 'biweekly' };
+    const rolled = recurringBillsForMonth([patched], [], REF).find((b) => b.id === 'rent')!;
+    expect(rolled.dueDay).toBe(15);
+    expect(rolled.frequency).toBe('biweekly');
+    expect(rolled.status).toBe('unpaid');
+  });
+
+  it('clearing due day (set to undefined) is preserved', () => {
+    const bill = mkFixed('rent', 'Rent', 900, { dueDay: 1 });
+    const patched: BudgetItem = { ...bill, dueDay: undefined };
+    const rolled = recurringBillsForMonth([patched], [], REF).find((b) => b.id === 'rent')!;
+    expect(rolled.dueDay).toBeUndefined();
   });
 });

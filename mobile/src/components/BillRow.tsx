@@ -9,9 +9,10 @@ import { formatCurrency } from '../utils/format';
 interface BillRowProps {
   bill: RecurringBill;
   onMarkAsPaid: () => void;
+  onEdit?: () => void;
 }
 
-export function BillRow({ bill, onMarkAsPaid }: BillRowProps) {
+export function BillRow({ bill, onMarkAsPaid, onEdit }: BillRowProps) {
   const theme = useTheme();
   const progress = bill.plannedAmount > 0 ? Math.min(1, bill.actualPaid / bill.plannedAmount) : 0;
 
@@ -48,17 +49,32 @@ export function BillRow({ bill, onMarkAsPaid }: BillRowProps) {
         />
       </View>
 
-      {bill.status !== 'paid' && (
-        <Pressable
-          onPress={onMarkAsPaid}
-          style={({ pressed }) => [
-            styles.markPaidBtn,
-            { borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
-          ]}
-        >
-          <Text style={[styles.markPaidLabel, { color: theme.text }]}>Mark as Paid</Text>
-        </Pressable>
-      )}
+      <View style={styles.footer}>
+        {bill.status !== 'paid' ? (
+          <Pressable
+            onPress={onMarkAsPaid}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              { borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
+            ]}
+          >
+            <Text style={[styles.actionLabel, { color: theme.text }]}>Mark as Paid</Text>
+          </Pressable>
+        ) : (
+          <View />
+        )}
+        {onEdit ? (
+          <Pressable
+            onPress={onEdit}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              { borderColor: theme.border, opacity: pressed ? 0.7 : 1 }
+            ]}
+          >
+            <Text style={[styles.actionLabel, { color: theme.text }]}>Edit</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -96,15 +112,20 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%'
   },
-  markPaidBtn: {
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: SPACING.sm,
+    gap: SPACING.sm
+  },
+  actionBtn: {
     paddingVertical: SPACING.xs + 2,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.pill,
-    borderWidth: 1,
-    alignSelf: 'flex-start'
+    borderWidth: 1
   },
-  markPaidLabel: {
+  actionLabel: {
     fontSize: 12,
     fontWeight: '600'
   }

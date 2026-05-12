@@ -14,6 +14,7 @@ import { SavingsTargetCard } from '../components/SavingsTargetCard';
 import { MonthlySnapshotCard } from '../components/MonthlySnapshotCard';
 import { Card } from '../components/Card';
 import { BillRow } from '../components/BillRow';
+import { EditRecurringBillSheet } from '../components/EditRecurringBillSheet';
 import { VariableCategoryRow } from '../components/VariableCategoryRow';
 import { EditVariableCategorySheet } from '../components/EditVariableCategorySheet';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -37,7 +38,8 @@ export function BudgetScreen() {
     resetToDemo
   } = useAppState();
 
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingVariableId, setEditingVariableId] = useState<string | null>(null);
+  const [editingBillId, setEditingBillId] = useState<string | null>(null);
 
   const totalIncome = totalIncomeThisMonth(transactions, referenceDate);
   const recurringBills = useMemo(
@@ -93,7 +95,12 @@ export function BudgetScreen() {
             </Card>
           ) : (
             recurringBills.map((bill) => (
-              <BillRow key={bill.id} bill={bill} onMarkAsPaid={() => markBillAsPaid(bill.id)} />
+              <BillRow
+                key={bill.id}
+                bill={bill}
+                onMarkAsPaid={() => markBillAsPaid(bill.id)}
+                onEdit={() => setEditingBillId(bill.id)}
+              />
             ))
           )}
         </View>
@@ -115,7 +122,7 @@ export function BudgetScreen() {
                 key={item.id}
                 item={item}
                 progress={variableCategoryProgress(item, transactions, referenceDate)}
-                onEdit={() => setEditingId(item.id)}
+                onEdit={() => setEditingVariableId(item.id)}
               />
             ))
           )}
@@ -170,12 +177,22 @@ export function BudgetScreen() {
       </ScrollView>
 
       <EditVariableCategorySheet
-        visible={editingId !== null}
-        item={variableItems.find((b) => b.id === editingId) ?? null}
-        onCancel={() => setEditingId(null)}
+        visible={editingVariableId !== null}
+        item={variableItems.find((b) => b.id === editingVariableId) ?? null}
+        onCancel={() => setEditingVariableId(null)}
         onSave={(patch) => {
-          if (editingId) updateBudgetItem(editingId, patch);
-          setEditingId(null);
+          if (editingVariableId) updateBudgetItem(editingVariableId, patch);
+          setEditingVariableId(null);
+        }}
+      />
+
+      <EditRecurringBillSheet
+        visible={editingBillId !== null}
+        item={budgetItems.find((b) => b.id === editingBillId && b.budgetType === 'fixed') ?? null}
+        onCancel={() => setEditingBillId(null)}
+        onSave={(patch) => {
+          if (editingBillId) updateBudgetItem(editingBillId, patch);
+          setEditingBillId(null);
         }}
       />
     </SafeAreaView>
