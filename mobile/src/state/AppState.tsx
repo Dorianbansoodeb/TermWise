@@ -1,0 +1,409 @@
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
+import type {
+  BudgetItem,
+  ChartMode,
+  ChartRange,
+  MonthlySettings,
+  PendingIncomePrompt,
+  PendingUndoBar,
+  PersistedState,
+  TransactionItem
+} from '../types/models';
+import { buildDemoState } from './demoData';
+import { loadPersistedState, savePersistedState } from './storage';
+import { monthKey } from '../utils/date';
+import {
+  actualPaidForBill,
+  availableToBudgetForMonth,
+  resolvedSavingsTarget
+} from '../utils/financeCalculator';
+
+// MARK: - UUID
+
+function uuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+// MARK: - Context shape
+
+export interface AppContextValue {
+  // Data
+  transactions: TransactionItem[];
+  budgetItems: BudgetItem[];
+  settingsForMonth: MonthlySettings;
+  monthlyNote: string;
+  chartMode: ChartMode;
+  variableChartRange: ChartRange;
+  /// Derived
+  availableToBudget: number;
+  savingsTarget: number;
+  /// Loaded flag — UI shows splash until storage is read.
+  isHydrated: boolean;
+  /// Reference "now" — fixed at first hydration so chart slot math is stable
+  /// within a single render.
+  referenceDate: Date;
+
+  // Mutations
+  addTransaction(input: {
+    amount: number;
+    name?: string;
+    category: string;
+    note?: string;
+    date?: Date;
+    type: 'expense' | 'income';
+    savedApplied?: number;
+    source?: string;
+    billId?: string;
+    undoable?: boolean;
+  }): TransactionItem;
+  removeTransaction(id: string, opts?: { withUndo?: boolean }): void;
+  markBillAsPaid(billId: string): void;
+  setAvailableToBudget(amount: number): void;
+  setSavingsTarget(amount: number | undefined): void;
+  setDesiredSavingsRate(rate: number): void;
+  setMonthlyNote(note: string): void;
+  setChartMode(mode: ChartMode): void;
+  setVariableChartRange(range: ChartRange): void;
+  resolveIncomePrompt(choice: 'addToBudget' | 'keepAsReserve' | 'cancel'): void;
+  dismissUndoBar(opts?: { performAction?: boolean }): void;
+  /// Drops local AsyncStorage state and reseeds the demo data.
+  resetToDemo(): Promise<void>;
+
+  // Transient UI
+  pendingIncomePrompt: PendingIncomePrompt | null;
+  pendingUndoBar: PendingUndoBar | null;
+}
+
+const Ctx = createContext<AppContextValue | null>(null);
+
+const UNDO_DURATION_MS = 5000;
+
+// MARK: - Provider
+
+export function AppStateProvider({ children }: { children: React.ReactNode }) {
+  const [isHydrated, setHydrated] = useState(false);
+  const [referenceDate] = useState<Date>(() => new Date());
+
+  const [transactions, setTransactions] = useState<TransactionItem[]>([]);
+  const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
+  const [monthlySettingsByMonth, setMonthlySettingsByMonth] = useState<
+    Record<string, MonthlySettings>
+  >({});
+  const [monthlyNotes, setMonthlyNotes] = useState<Record<string, string>>({});
+  const [chartMode, setChartModeState] = useState<ChartMode>('variable');
+  const [variableChartRange, setVariableChartRangeState] = useState<ChartRange>('currentMonth');
+
+  const [pendingIncomePrompt, setPendingIncomePrompt] = useState<PendingIncomePrompt | null>(null);
+  const [pendingUndoBar, setPendingUndoBar] = useState<PendingUndoBar | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const currentMonthKey = monthKey(referenceDate);
+
+  // MARK: load + persist
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const stored = await loadPersistedState();
+      const initial = stored ?? buildDemoState(referenceDate);
+      if (cancelled) return;
+      applyPersistedState(initial);
+      if (!stored) {
+        await savePersistedState(initial);
+      }
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function applyPersistedState(state: PersistedState) {
+    setTransactions(state.transactions);
+    setBudgetItems(state.budgetItems);
+    setMonthlySettingsByMonth(state.monthlySettingsByMonth);
+    setMonthlyNotes(state.monthlyNotes);
+    setChartModeState(state.chartMode);
+    setVariableChartRangeState(state.variableChartRange);
+  }
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    const snapshot: PersistedState = {
+      schemaVersion: 1,
+      transactions,
+      budgetItems,
+      monthlySettingsByMonth,
+      monthlyNotes,
+      chartMode,
+      variableChartRange
+    };
+    savePersistedState(snapshot);
+  }, [
+    isHydrated,
+    transactions,
+    budgetItems,
+    monthlySettingsByMonth,
+    monthlyNotes,
+    chartMode,
+    variableChartRange
+  ]);
+
+  // MARK: settings helpers
+
+  const settingsForMonth: MonthlySettings = useMemo(() => {
+    const stored = monthlySettingsByMonth[currentMonthKey];
+    if (stored) return stored;
+    return { monthKey: currentMonthKey, desiredSavingsRate: 0.15 };
+  }, [monthlySettingsByMonth, currentMonthKey]);
+
+  const monthlyNote = monthlyNotes[currentMonthKey] ?? '';
+
+  const availableToBudget = useMemo(
+    () => availableToBudgetForMonth(transactions, settingsForMonth, referenceDate),
+    [transactions, settingsForMonth, referenceDate]
+  );
+
+  const savingsTarget = useMemo(
+    () => resolvedSavingsTarget(availableToBudget, settingsForMonth),
+    [availableToBudget, settingsForMonth]
+  );
+
+  const updateSettings = useCallback(
+    (patch: Partial<MonthlySettings>) => {
+      setMonthlySettingsByMonth((prev) => {
+        const existing = prev[currentMonthKey] ?? {
+          monthKey: currentMonthKey,
+          desiredSavingsRate: 0.15
+        };
+        const next: MonthlySettings = { ...existing, ...patch, monthKey: currentMonthKey };
+        return { ...prev, [currentMonthKey]: next };
+      });
+    },
+    [currentMonthKey]
+  );
+
+  // MARK: undo helpers
+
+  const scheduleUndo = useCallback((bar: PendingUndoBar) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setPendingUndoBar(bar);
+    undoTimerRef.current = setTimeout(() => {
+      setPendingUndoBar(null);
+      undoTimerRef.current = null;
+    }, UNDO_DURATION_MS);
+  }, []);
+
+  const dismissUndoBar = useCallback<AppContextValue['dismissUndoBar']>(
+    (opts) => {
+      const bar = pendingUndoBar;
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = null;
+      }
+      setPendingUndoBar(null);
+      if (!opts?.performAction || !bar) return;
+      const action = bar.action;
+      if (action.kind === 'restoreRemovedTransaction') {
+        const txn = action.transaction;
+        setTransactions((prev) =>
+          prev.find((t) => t.id === txn.id) ? prev : [...prev, txn]
+        );
+      } else if (action.kind === 'undoMarkAsPaid') {
+        setTransactions((prev) => prev.filter((t) => t.id !== action.transactionId));
+      }
+    },
+    [pendingUndoBar]
+  );
+
+  // MARK: mutations
+
+  const addTransaction = useCallback<AppContextValue['addTransaction']>(
+    (input) => {
+      const now = new Date();
+      const txn: TransactionItem = {
+        id: uuid(),
+        amount: Math.max(0, input.amount),
+        name: input.name?.trim() || input.category,
+        category: input.category,
+        note: input.note ?? '',
+        date: (input.date ?? now).toISOString(),
+        createdAt: now.toISOString(),
+        type: input.type,
+        savedApplied: Math.max(0, input.savedApplied ?? 0),
+        source: input.source,
+        billId: input.billId,
+        undoable: input.undoable ?? false
+      };
+      setTransactions((prev) => [...prev, txn]);
+      if (txn.type === 'income') {
+        setPendingIncomePrompt({
+          transactionId: txn.id,
+          amount: txn.amount,
+          categoryName: txn.category
+        });
+      }
+      return txn;
+    },
+    []
+  );
+
+  const removeTransaction = useCallback<AppContextValue['removeTransaction']>(
+    (id, opts) => {
+      const target = transactions.find((t) => t.id === id);
+      if (!target) return;
+      setTransactions((prev) => prev.filter((t) => t.id !== id));
+      if (opts?.withUndo) {
+        scheduleUndo({
+          message: `Removed ${target.name || target.category}`,
+          action: { kind: 'restoreRemovedTransaction', transaction: target },
+          createdAt: Date.now()
+        });
+      }
+    },
+    [transactions, scheduleUndo]
+  );
+
+  const markBillAsPaid = useCallback<AppContextValue['markBillAsPaid']>(
+    (billId) => {
+      const bill = budgetItems.find((b) => b.id === billId && b.budgetType === 'fixed');
+      if (!bill) return;
+      const alreadyPaid = actualPaidForBill(bill, transactions, referenceDate);
+      const remaining = Math.max(0, bill.planned - alreadyPaid);
+      if (remaining <= 0) return;
+      const now = new Date();
+      const txn: TransactionItem = {
+        id: uuid(),
+        amount: remaining,
+        name: bill.category,
+        category: bill.category,
+        note: '',
+        date: now.toISOString(),
+        createdAt: now.toISOString(),
+        type: 'expense',
+        savedApplied: 0,
+        source: 'markAsPaid',
+        billId: bill.id,
+        undoable: true
+      };
+      setTransactions((prev) => [...prev, txn]);
+      scheduleUndo({
+        message: `Fully paid ${bill.category}`,
+        action: { kind: 'undoMarkAsPaid', billId: bill.id, transactionId: txn.id },
+        createdAt: Date.now()
+      });
+    },
+    [budgetItems, transactions, referenceDate, scheduleUndo]
+  );
+
+  const setAvailableToBudget = useCallback<AppContextValue['setAvailableToBudget']>(
+    (amount) => {
+      updateSettings({ availableToBudget: Math.max(0, amount) });
+    },
+    [updateSettings]
+  );
+
+  const setSavingsTarget = useCallback<AppContextValue['setSavingsTarget']>(
+    (amount) => {
+      updateSettings({
+        customSavingsTarget: amount === undefined ? undefined : Math.max(0, amount)
+      });
+    },
+    [updateSettings]
+  );
+
+  const setDesiredSavingsRate = useCallback<AppContextValue['setDesiredSavingsRate']>(
+    (rate) => {
+      updateSettings({ desiredSavingsRate: Math.max(0, rate) });
+    },
+    [updateSettings]
+  );
+
+  const setMonthlyNote = useCallback<AppContextValue['setMonthlyNote']>(
+    (note) => {
+      setMonthlyNotes((prev) => ({ ...prev, [currentMonthKey]: note }));
+    },
+    [currentMonthKey]
+  );
+
+  const resolveIncomePrompt = useCallback<AppContextValue['resolveIncomePrompt']>(
+    (choice) => {
+      const prompt = pendingIncomePrompt;
+      if (!prompt) return;
+      if (choice === 'cancel') {
+        setPendingIncomePrompt(null);
+        return;
+      }
+      if (choice === 'addToBudget') {
+        // Move the recorded income into the budget envelope override so future
+        // months still derive from totalIncome by default.
+        const current = settingsForMonth.availableToBudget ?? availableToBudget;
+        updateSettings({ availableToBudget: Math.max(0, current) + prompt.amount });
+      }
+      // 'keepAsReserve' → leave availableToBudget alone (reserve grows naturally).
+      setPendingIncomePrompt(null);
+    },
+    [pendingIncomePrompt, settingsForMonth, availableToBudget, updateSettings]
+  );
+
+  const setChartMode = useCallback((mode: ChartMode) => setChartModeState(mode), []);
+  const setVariableChartRange = useCallback(
+    (range: ChartRange) => setVariableChartRangeState(range),
+    []
+  );
+
+  const resetToDemo = useCallback(async () => {
+    const next = buildDemoState(new Date());
+    applyPersistedState(next);
+    await savePersistedState(next);
+  }, []);
+
+  const value: AppContextValue = {
+    transactions,
+    budgetItems,
+    settingsForMonth,
+    monthlyNote,
+    chartMode,
+    variableChartRange,
+    availableToBudget,
+    savingsTarget,
+    isHydrated,
+    referenceDate,
+    addTransaction,
+    removeTransaction,
+    markBillAsPaid,
+    setAvailableToBudget,
+    setSavingsTarget,
+    setDesiredSavingsRate,
+    setMonthlyNote,
+    setChartMode,
+    setVariableChartRange,
+    resolveIncomePrompt,
+    dismissUndoBar,
+    resetToDemo,
+    pendingIncomePrompt,
+    pendingUndoBar
+  };
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useAppState(): AppContextValue {
+  const ctx = useContext(Ctx);
+  if (!ctx) {
+    throw new Error('useAppState must be used within <AppStateProvider>');
+  }
+  return ctx;
+}

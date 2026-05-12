@@ -1,13 +1,25 @@
 {
   "expo": {
-    "name": "Student Finance Planner",
-    "slug": "student-finance-planner",
-    "version": "1.0.0",
+    "name": "TermWise",
+    "slug": "termwise",
+    "scheme": "termwise",
+    "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.termwise.mobile"
+    },
+    "android": {
+      "package": "app.termwise.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      }
     },
     "assetBundlePatterns": ["**/*"]
   }
