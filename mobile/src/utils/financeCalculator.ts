@@ -54,8 +54,21 @@ export function availableToBudgetForMonth(
 }
 
 /// `max(0, totalIncome − availableToBudget)`. Income parked outside the envelope.
+/// Always non-negative — when the user is budgeting more than they've earned,
+/// the UI surfaces the inverse via `budgetingOverIncomeAmount` instead.
 export function reserveNotBudgeted(totalIncome: number, availableToBudget: number): number {
   return Math.max(0, totalIncome - availableToBudget);
+}
+
+/// `max(0, availableToBudget − totalIncome)`. The amount by which the user
+/// has chosen to budget more than they've actually earned this month. Drives
+/// the "Budgeting Over Income" row that replaces "Reserve / Not Budgeted"
+/// when the envelope exceeds Total Income.
+export function budgetingOverIncomeAmount(
+  totalIncome: number,
+  availableToBudget: number
+): number {
+  return Math.max(0, availableToBudget - totalIncome);
 }
 
 // MARK: - 2. Budget difference / allocation
@@ -78,7 +91,7 @@ export function budgetDifference(availableToBudget: number, totalBudgeted: numbe
 }
 
 export interface UnallocatedRow {
-  label: 'Unallocated' | 'Over Budget';
+  label: 'Unallocated Budget' | 'Over Budget By';
   value: number;
   isOver: boolean;
 }
@@ -86,9 +99,9 @@ export interface UnallocatedRow {
 export function unallocatedRow(availableToBudget: number, totalBudgetedValue: number): UnallocatedRow {
   const diff = availableToBudget - totalBudgetedValue;
   if (diff >= 0) {
-    return { label: 'Unallocated', value: diff, isOver: false };
+    return { label: 'Unallocated Budget', value: diff, isOver: false };
   }
-  return { label: 'Over Budget', value: Math.abs(diff), isOver: true };
+  return { label: 'Over Budget By', value: Math.abs(diff), isOver: true };
 }
 
 /// Savings Target = explicit override OR `desiredSavingsRate × availableToBudget`.
@@ -109,13 +122,30 @@ export function usableBudgetAfterSavings(availableToBudget: number, savingsTarge
   return Math.max(0, Math.max(0, availableToBudget) - Math.max(0, savingsTarget));
 }
 
+/// Inline warning shown beneath the Available to Budget editor whenever the
+/// chosen envelope exceeds Total Income. Returns `null` when there is no
+/// warning to surface.
+///
+/// Examples:
+///   warning(1250, 2300) → "You are budgeting $1,050 more than your recorded income."
+///   warning(1250, 1250) → null
+///   warning(1250,  900) → null
 export function availableToBudgetWarning(
   totalIncome: number,
   availableToBudget: number
 ): string | null {
-  return availableToBudget > totalIncome
-    ? "You're budgeting more than the income you've recorded this month."
-    : null;
+  const over = budgetingOverIncomeAmount(totalIncome, availableToBudget);
+  if (over <= 0) return null;
+  const formatted = formatWarningCurrency(over);
+  return `You are budgeting ${formatted} more than your recorded income.`;
+}
+
+function formatWarningCurrency(value: number): string {
+  // Keep this inline so financeCalculator stays free of `format.ts`'s Intl
+  // wrapper. The shape mirrors `formatCurrency({ compact: true })`.
+  if (!Number.isFinite(value)) return '$0';
+  const rounded = Math.round(value);
+  return `$${rounded.toLocaleString('en-US')}`;
 }
 
 // MARK: - 3. Recurring bill status

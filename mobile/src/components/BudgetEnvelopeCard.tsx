@@ -6,6 +6,7 @@ import { SPACING } from '../theme/tokens';
 import { formatCurrency } from '../utils/format';
 import {
   budgetDifference,
+  budgetingOverIncomeAmount,
   reserveNotBudgeted,
   totalBudgeted,
   unallocatedRow
@@ -29,6 +30,8 @@ export function BudgetEnvelopeCard({
   const totalBudgetedValue = totalBudgeted(budgetItems, savingsTarget);
   const diff = budgetDifference(availableToBudget, totalBudgetedValue);
   const reserve = reserveNotBudgeted(totalIncome, availableToBudget);
+  const overIncome = budgetingOverIncomeAmount(totalIncome, availableToBudget);
+  const isOverIncome = overIncome > 0;
   const row = unallocatedRow(availableToBudget, totalBudgetedValue);
 
   return (
@@ -39,7 +42,17 @@ export function BudgetEnvelopeCard({
       </Text>
       <Row label="Total Income" value={formatCurrency(totalIncome)} muted />
       <Row label="Available to Budget" value={formatCurrency(availableToBudget)} emphasis />
-      <Row label="Reserve / Not Budgeted" value={formatCurrency(reserve)} muted />
+      {isOverIncome ? (
+        // Replaces "Reserve / Not Budgeted" — showing $0 reserve in this
+        // case is confusing; the user is over-committing, not parking income.
+        <Row
+          label="Budgeting Over Income"
+          value={formatCurrency(overIncome)}
+          tone="danger"
+        />
+      ) : (
+        <Row label="Reserve / Not Budgeted" value={formatCurrency(reserve)} muted />
+      )}
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
       <Row label="Total Budgeted" value={formatCurrency(totalBudgetedValue)} />
       <Row

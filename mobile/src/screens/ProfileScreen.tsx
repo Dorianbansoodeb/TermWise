@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppState } from '../state/AppState';
@@ -7,6 +7,10 @@ import { RADIUS, SPACING } from '../theme/tokens';
 import { Card } from '../components/Card';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { formatPercent } from '../utils/format';
+import {
+  availableToBudgetWarning,
+  totalIncomeThisMonth
+} from '../utils/financeCalculator';
 
 const RATE_OPTIONS = [0.05, 0.1, 0.15, 0.2, 0.25];
 
@@ -20,7 +24,9 @@ export function ProfileScreen() {
     setDesiredSavingsRate,
     setSavingsTarget,
     resetToDemo,
-    availableToBudget
+    availableToBudget,
+    transactions,
+    referenceDate
   } = useAppState();
 
   const [availableDraft, setAvailableDraft] = useState(`${availableToBudget.toFixed(0)}`);
@@ -28,6 +34,26 @@ export function ProfileScreen() {
     settingsForMonth.customSavingsTarget != null
       ? settingsForMonth.customSavingsTarget.toFixed(0)
       : ''
+  );
+
+  const totalIncome = useMemo(
+    () => totalIncomeThisMonth(transactions, referenceDate),
+    [transactions, referenceDate]
+  );
+
+  // Show the warning against the live draft so the user can see the moment
+  // their typed value crosses Total Income; fall back to the saved value
+  // when the draft is empty or unparseable.
+  const liveAvailable = useMemo(() => {
+    const trimmed = availableDraft.trim();
+    if (trimmed === '') return availableToBudget;
+    const parsed = parseFloat(trimmed);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : availableToBudget;
+  }, [availableDraft, availableToBudget]);
+
+  const overIncomeWarning = useMemo(
+    () => availableToBudgetWarning(totalIncome, liveAvailable),
+    [totalIncome, liveAvailable]
   );
 
   return (
@@ -60,7 +86,7 @@ export function ProfileScreen() {
         <Card>
           <Text style={[styles.section, { color: theme.text }]}>Available to Budget</Text>
           <Text style={[styles.helper, { color: theme.textMuted }]}>
-            Override how much you've chosen to budget this month. Defaults to recorded income.
+            Choose how much of your income you want to plan with this month.
           </Text>
           <TextInput
             value={availableDraft}
@@ -70,13 +96,18 @@ export function ProfileScreen() {
               styles.input,
               {
                 color: theme.text,
-                borderColor: theme.border,
+                borderColor: overIncomeWarning ? theme.danger : theme.border,
                 backgroundColor: theme.surface
               }
             ]}
             placeholder="0"
             placeholderTextColor={theme.textMuted}
           />
+          {overIncomeWarning && (
+            <Text style={[styles.warningText, { color: theme.danger }]}>
+              {overIncomeWarning}
+            </Text>
+          )}
           <PrimaryButton
             title="Save Available to Budget"
             onPress={() => {
@@ -205,5 +236,12 @@ const styles = StyleSheet.create({
   rateRow: {
     flexDirection: 'row',
     gap: SPACING.sm
+  },
+  warningText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: -SPACING.xs,
+    marginBottom: SPACING.sm,
+    lineHeight: 16
   }
 });
