@@ -29,7 +29,7 @@ describe('totalBudgeted', () => {
     const items: BudgetItem[] = [
       mk('1', 'Rent', 900, 'fixed'),
       mk('2', 'Groceries', 280, 'variable'),
-      mk('3', 'Emergency Fund', 100, 'savings')
+      mk('3', 'Long-term Savings', 100, 'savings')
     ];
     expect(totalBudgeted(items)).toBe(1180);
   });

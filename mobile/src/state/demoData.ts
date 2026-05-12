@@ -94,15 +94,6 @@ export function buildDemoState(now: Date = new Date()): PersistedState {
     frequency: 'none'
   };
 
-  const emergencySavings: BudgetItem = {
-    id: uuid(),
-    category: 'Emergency Fund',
-    planned: 100,
-    budgetType: 'savings',
-    frequency: 'monthly',
-    targetAmount: 2000
-  };
-
   const budgetItems: BudgetItem[] = [
     rent,
     phone,
@@ -112,8 +103,7 @@ export function buildDemoState(now: Date = new Date()): PersistedState {
     eatingOut,
     transportation,
     coffee,
-    fun,
-    emergencySavings
+    fun
   ];
 
   const transactions: TransactionItem[] = [];
