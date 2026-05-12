@@ -18,8 +18,6 @@ import { EditRecurringBillSheet } from '../components/EditRecurringBillSheet';
 import { VariableCategoryRow } from '../components/VariableCategoryRow';
 import { EditVariableCategorySheet } from '../components/EditVariableCategorySheet';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { formatCurrency } from '../utils/format';
-import { colorForCategory } from '../utils/categories';
 
 export function BudgetScreen() {
   const theme = useTheme();
@@ -48,7 +46,6 @@ export function BudgetScreen() {
   );
 
   const variableItems = budgetItems.filter((b) => b.budgetType === 'variable');
-  const savingsItems = budgetItems.filter((b) => b.budgetType === 'savings');
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
@@ -128,45 +125,6 @@ export function BudgetScreen() {
           )}
         </View>
 
-        <View>
-          <Text style={[styles.section, { color: theme.text }]}>Savings Goals</Text>
-          <Text style={[styles.helper, { color: theme.textMuted }]}>
-            Long-term goals that contribute toward your Savings Target.
-          </Text>
-          <Card>
-            {savingsItems.map((item, idx) => (
-              <View
-                key={item.id}
-                style={[
-                  styles.budgetRow,
-                  idx > 0 && {
-                    borderTopWidth: StyleSheet.hairlineWidth,
-                    borderTopColor: theme.border
-                  }
-                ]}
-              >
-                <View style={[styles.dot, { backgroundColor: colorForCategory(item.category) }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.rowLabel, { color: theme.text }]}>{item.category}</Text>
-                  {item.targetAmount && (
-                    <Text style={[styles.rowSub, { color: theme.textMuted }]}>
-                      Goal {formatCurrency(item.targetAmount, { compact: true })}
-                    </Text>
-                  )}
-                </View>
-                <Text style={[styles.rowValue, { color: theme.textMuted }]}>
-                  {formatCurrency(item.planned, { compact: true })}/mo
-                </Text>
-              </View>
-            ))}
-            {savingsItems.length === 0 && (
-              <Text style={[styles.empty, { color: theme.textMuted }]}>
-                No savings goals yet.
-              </Text>
-            )}
-          </Card>
-        </View>
-
         <Card>
           <Text style={[styles.section, { color: theme.text }]}>Data</Text>
           <Text style={[styles.helper, { color: theme.textMuted }]}>
@@ -220,30 +178,6 @@ const styles = StyleSheet.create({
   helper: {
     fontSize: 12,
     marginBottom: SPACING.sm
-  },
-  budgetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: SPACING.sm
-  },
-  rowLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600'
-  },
-  rowSub: {
-    fontSize: 11,
-    marginTop: 1
-  },
-  rowValue: {
-    fontSize: 14,
-    fontWeight: '600'
   },
   empty: {
     fontSize: 12,
