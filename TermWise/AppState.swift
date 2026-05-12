@@ -775,6 +775,189 @@ final class AppState: ObservableObject {
         )
     }
 
+    // MARK: - Spending trend chart windowed ranges (`7D` / `30D` / current month)
+
+    func spendTrendSelectedDayCountForRange(_ range: SpendTrendRange) -> Int {
+        range.selectedDays(daysInCalendarMonth: daysInCurrentMonth)
+    }
+
+    func orderedSpendTrendDayStartsForRange(_ range: SpendTrendRange) -> [Date] {
+        SpendingSeries.windowDayStarts(
+            for: range,
+            now: Date(),
+            calendar: Calendar.current,
+            daysInCalendarMonth: daysInCurrentMonth
+        )
+    }
+
+    func spendTrendTodayChartSlotForRange(_ range: SpendTrendRange) -> Int {
+        SpendingSeries.effectiveTodaySlot(
+            oneBasedWithinWindow: currentDayOfMonth,
+            range: range,
+            chartSpanDays: spendTrendSelectedDayCountForRange(range)
+        )
+    }
+
+    /// Proportional budget envelopes scaled to ``range`` (`Month` ⇒ identity ratios).
+    func spendTrendScaledPeriod(forRange range: SpendTrendRange) -> SpendTrendRangeMath.Result {
+        SpendTrendRangeMath.scaledPeriod(
+            availableToBudget: availableToBudget,
+            savingsTarget: savingsTargetThisMonth,
+            monthlyVariableLimit: variableSpendingPace.variableBudget,
+            selectedDays: spendTrendSelectedDayCountForRange(range),
+            daysInMonth: daysInCurrentMonth
+        )
+    }
+
+    /// Windowed cumulative **total** spend (all expense categories).
+    func dailyActualCumulativeForRange(_ range: SpendTrendRange) -> [Double] {
+        let ordered = orderedSpendTrendDayStartsForRange(range)
+        let elapsed = spendTrendTodayChartSlotForRange(range)
+        return SpendingSeries.cumulativeTotalSpendPerDaySlot(
+            transactions: transactions,
+            orderedDayStarts: ordered,
+            calendar: Calendar.current,
+            elapsedSlotsInclusiveOneBased: elapsed
+        )
+    }
+
+    /// Windowed cumulative **variable-only** spend.
+    func dailyVariableActualCumulativeForRange(_ range: SpendTrendRange) -> [Double] {
+        let ordered = orderedSpendTrendDayStartsForRange(range)
+        let elapsed = spendTrendTodayChartSlotForRange(range)
+        return SpendingSeries.cumulativeVariableSpendPerDaySlot(
+            transactions: transactions,
+            budgetItems: budgetItems,
+            orderedDayStarts: ordered,
+            calendar: Calendar.current,
+            elapsedSlotsInclusiveOneBased: elapsed
+        )
+    }
+
+    /// Linear variable pace projected to end of chart window (`7D` / `30D` collapse to trailing spend when elapsed span is full width).
+    func projectedVariableSpendEndOfWindow(forRange range: SpendTrendRange) -> Double {
+        let cumulative = dailyVariableActualCumulativeForRange(range)
+        let spentTrail = cumulative.last ?? 0
+        let elapsed = spendTrendTodayChartSlotForRange(range)
+        let span = spendTrendSelectedDayCountForRange(range)
+        let denom = Double(max(1, min(elapsed, span)))
+        return spentTrail / denom * Double(span)
+    }
+
+    func projectedVariableForDayInRange(dayNumber: Int, range: SpendTrendRange) -> Double {
+        SpendingAnalyticsService.projectedAmountForDay(
+            dayNumber: dayNumber,
+            dailyActualCumulative: dailyVariableActualCumulativeForRange(range),
+            currentDayOfMonth: spendTrendTodayChartSlotForRange(range),
+            daysInCurrentMonth: spendTrendSelectedDayCountForRange(range),
+            projectedEndOfMonthSpend: projectedVariableSpendEndOfWindow(forRange: range)
+        )
+    }
+
+    func projectedTotalForDayInRange(dayNumber: Int, range: SpendTrendRange) -> Double {
+        SpendingAnalyticsService.projectedAmountForDay(
+            dayNumber: dayNumber,
+            dailyActualCumulative: dailyActualCumulativeForRange(range),
+            currentDayOfMonth: spendTrendTodayChartSlotForRange(range),
+            daysInCurrentMonth: spendTrendSelectedDayCountForRange(range),
+            projectedEndOfMonthSpend: totalSpendTrendEvaluation(forSpendTrendRange: range).projectedMonthEndSpend
+        )
+    }
+
+    /// Total Spending Trend pacing + thresholds for chart labels and risk badges, scoped to `range`.
+    func totalSpendTrendEvaluation(forSpendTrendRange range: SpendTrendRange) -> TotalSpendingPace.Result {
+        let calendar = Calendar.current
+        let now = Date()
+        let span = spendTrendSelectedDayCountForRange(range)
+        let elapsed = spendTrendTodayChartSlotForRange(range)
+
+        let totalSpentTrail = dailyActualCumulativeForRange(range).last ?? 0
+        let variableSpentTrail = dailyVariableActualCumulativeForRange(range).last ?? 0
+
+        let fixedExpectations = spendTrendFixedTotalsForRange(range)
+
+        switch range {
+        case .currentMonth:
+            return TotalSpendingPace.evaluate(
+                transactions: transactions,
+                availableToBudget: availableToBudget,
+                savingsTarget: savingsTargetThisMonth,
+                variableSpentSoFar: variableSpendingPace.variableSpent,
+                expectedFixedBillsThisMonth: fixedExpectations.expected,
+                unpaidFixedBillsRemaining: fixedExpectations.remaining,
+                currentDayOfMonth: currentDayOfMonth,
+                daysInMonth: daysInCurrentMonth,
+                calendar: calendar,
+                now: now
+            )
+
+        case .sevenDays, .oneWeek, .thirtyDays:
+            let scaled = spendTrendScaledPeriod(forRange: range)
+            return TotalSpendingPace.evaluateWithTotals(
+                totalSpentThisPeriod: totalSpentTrail,
+                availableToBudget: scaled.periodAvailableToBudget,
+                savingsTarget: scaled.periodSavingsTarget,
+                variableSpentSoFar: variableSpentTrail,
+                expectedFixedBillsThisPeriod: fixedExpectations.expected,
+                unpaidFixedBillsRemainingThisPeriod: fixedExpectations.remaining,
+                currentDayOfPeriod: elapsed,
+                periodLengthDays: span
+            )
+        }
+    }
+
+    func spendTrendChartDateLabel(chartIndex chartIndexZeroBased: Int, forRange range: SpendTrendRange) -> String {
+        let days = orderedSpendTrendDayStartsForRange(range)
+        guard !days.isEmpty else { return "" }
+        let idx = max(0, min(days.count - 1, chartIndexZeroBased))
+        return days[idx].formatted(.dateTime.month(.abbreviated).day(.defaultDigits))
+    }
+
+    /// Fixed bill aggregates for spend trend totals (month ⇒ existing rollups).
+    private func spendTrendFixedTotalsForRange(_ range: SpendTrendRange) -> (expected: Double, remaining: Double) {
+        switch range {
+        case .currentMonth:
+            return expectedFixedBillsAggregateThisMonth()
+        case .sevenDays, .oneWeek, .thirtyDays:
+            let calendar = Calendar.current
+            let now = Date()
+            let ordered = orderedSpendTrendDayStartsForRange(range)
+            guard let firstDay = ordered.first, let lastDay = ordered.last else { return (0, 0) }
+            let windowStart = calendar.startOfDay(for: firstDay)
+            let windowEnd = calendar.startOfDay(for: lastDay)
+            let hidden = hiddenBudgetItemIdsByMonth[currentMonthKey] ?? []
+            var expected = 0.0
+            var remaining = 0.0
+            for item in budgetItems where item.budgetType == .fixed && !hidden.contains(item.id) {
+                let qualifiesMonthlyDueInWindow =
+                    SpendingSeries.fixedMonthlyBillLikelyDueInTrailingWindowSameMonthOrNil(
+                        item: item,
+                        windowStarts: ordered,
+                        referenceNow: now,
+                        calendar: calendar
+                    )
+
+                guard qualifiesMonthlyDueInWindow else { continue }
+
+                let planned = max(0, item.planned)
+                let actualPaidInWindow = fixedBillExpenseTotalInClosure(for: item, windowStart: windowStart, windowEnd: windowEnd, calendar: calendar)
+                expected += planned
+                remaining += max(0, planned - actualPaidInWindow)
+            }
+            return (expected, remaining)
+        }
+    }
+
+    private func fixedBillExpenseTotalInClosure(for item: BudgetItem, windowStart: Date, windowEnd: Date, calendar: Calendar) -> Double {
+        transactions.reduce(0) { sum, txn in
+            guard txn.type == .expense else { return sum }
+            guard BudgetSpendCalculator.matchesCategory(transactionCategory: txn.category, budgetCategory: item.category) else { return sum }
+            let day = calendar.startOfDay(for: txn.date)
+            guard day >= windowStart && day <= windowEnd else { return sum }
+            return sum + BudgetSpendCalculator.netExpenseAmount(txn)
+        }
+    }
+
     func apply(onboardingData: OnboardingData) {
         currentTerm = onboardingData.currentTerm
         monthlyIncome = onboardingData.monthlyIncome

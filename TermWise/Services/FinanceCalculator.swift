@@ -88,11 +88,10 @@ enum FinanceCalculator {
 
     // MARK: - Spending trend tooltip (unit-test contract)
 
-    // The trend tooltip is context-sensitive: tapping a past/current day shows **Actual** and
-    // omits Projected; tapping a future day shows **Projected** (or total-mode breakdown rows)
-    // and omits Actual. Variable mode: Actual/Projected + Budget Pace. Total mode: projected
-    // breakdown rows only on future days — **Available** appears only on the gray chart line,
-    // never in the tooltip; **Spend Limit** is shown only as the green chart reference (never in the callout).
+    // The trend tooltip is context-sensitive: Variable past shows Actual + Budget Pace; Variable
+    // future shows Projected + Budget Pace (month view only). Total past: Actual + Available to
+    // Budget; Total future: projected breakdown + Available to Budget. **Spend Limit** never
+    // appears in any tooltip (green line only).
 
     /// Variable Spending Trend tooltip rows for `selectedDay <= currentDay` (after the date).
     /// **Never** includes Limit or Savings Target — keeps the callout compact.
@@ -102,16 +101,14 @@ enum FinanceCalculator {
     static let spendingTrendVariableTooltipRowTitlesFuture: [String] = ["Projected", "Budget Pace"]
 
     /// Total Spending Trend tooltip rows for `selectedDay <= currentDay` (after the date).
-    /// Actual cumulative total only. **Available** is on-chart only (gray dashed line), never here. **Never** Spend Limit.
-    static let spendingTrendTotalTooltipRowTitlesPast: [String] = ["Actual"]
+    static let spendingTrendTotalTooltipRowTitlesPast: [String] = ["Actual", "Available to Budget"]
 
     /// Total Spending Trend tooltip rows for `selectedDay > currentDay` (after the date).
-    /// Projected total and unpaid fixed remainder. The variable component is intentionally
-    /// omitted to keep the callout compact — it can be inferred from `Projected total − Remaining fixed`.
-    /// **Available** is on-chart only, never here. **Never** Spend Limit.
     static let spendingTrendTotalTooltipRowTitlesFuture: [String] = [
         "Projected total spending",
-        "Remaining fixed bills"
+        "Projected variable spending",
+        "Remaining fixed bills",
+        "Available to Budget"
     ]
 
     // MARK: - 3. Fixed bill paid logic

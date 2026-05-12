@@ -121,17 +121,42 @@ enum TotalSpendingPace {
         calendar: Calendar = .current,
         now: Date = Date()
     ) -> Result {
+        let spent = totalSpent(transactions: transactions, calendar: calendar, now: now)
+        return evaluateWithTotals(
+            totalSpentThisPeriod: spent,
+            availableToBudget: availableToBudget,
+            savingsTarget: savingsTarget,
+            variableSpentSoFar: variableSpentSoFar,
+            expectedFixedBillsThisPeriod: expectedFixedBillsThisMonth,
+            unpaidFixedBillsRemainingThisPeriod: unpaidFixedBillsRemaining,
+            currentDayOfPeriod: currentDayOfMonth,
+            periodLengthDays: daysInMonth
+        )
+    }
+
+    /// Same projection + risk rules as ``evaluate(transactions:availableToBudget:)``, using pre‑aggregated
+    /// totals so Spending Trend ranges can shrink the bookkeeping window without re‑walking transactions.
+    static func evaluateWithTotals(
+        totalSpentThisPeriod: Double,
+        availableToBudget: Double,
+        savingsTarget: Double,
+        variableSpentSoFar: Double,
+        expectedFixedBillsThisPeriod: Double,
+        unpaidFixedBillsRemainingThisPeriod: Double,
+        currentDayOfPeriod: Int,
+        periodLengthDays: Int
+    ) -> Result {
         let safeAvailable = max(0, availableToBudget)
         let safeSavings = max(0, savingsTarget)
         let spendLimit = max(0, safeAvailable - safeSavings)
         let safeVariableSpent = max(0, variableSpentSoFar)
-        let safeExpectedFixed = max(0, expectedFixedBillsThisMonth)
-        let safeUnpaidFixed = max(0, unpaidFixedBillsRemaining)
+        let safeExpectedFixed = max(0, expectedFixedBillsThisPeriod)
+        let safeUnpaidFixed = max(0, unpaidFixedBillsRemainingThisPeriod)
 
-        let spent = totalSpent(transactions: transactions, calendar: calendar, now: now)
+        let spent = max(0, totalSpentThisPeriod)
 
-        let safeDaysInMonth = max(1, daysInMonth)
-        let safeDaysElapsed = max(1, min(currentDayOfMonth, daysInMonth))
+        let safeDaysInMonth = max(1, periodLengthDays)
+        let safeDaysElapsed = max(1, min(currentDayOfPeriod, periodLengthDays))
         let daysRemaining = max(0, safeDaysInMonth - safeDaysElapsed)
 
         // Variable burn rate, used both for the future variable slope and the standalone

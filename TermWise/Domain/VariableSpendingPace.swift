@@ -140,17 +140,7 @@ enum VariableSpendingPace {
         let safeDaysElapsed = max(1, min(currentDayOfMonth, daysInMonth))
         let expected = budget * (Double(safeDaysElapsed) / Double(safeDaysInMonth))
         let projected = spent / Double(safeDaysElapsed) * Double(safeDaysInMonth)
-
-        let status: RiskStatus
-        if budget <= 0 {
-            status = .onTrack
-        } else if projected <= budget * 0.9 {
-            status = .onTrack
-        } else if projected <= budget {
-            status = .watch
-        } else {
-            status = .overBudgetRisk
-        }
+        let status = riskStatus(projectedSpend: projected, variableBudgetLimit: budget)
 
         return Result(
             variableBudget: budget,
@@ -159,5 +149,19 @@ enum VariableSpendingPace {
             projectedMonthEndSpend: projected,
             status: status
         )
+    }
+
+    /// Same thresholds as `evaluate`, generalized to any proportional variable limit (weekly-style window scaling).
+    static func riskStatus(projectedSpend: Double, variableBudgetLimit: Double) -> RiskStatus {
+        if variableBudgetLimit <= 0 {
+            return .onTrack
+        }
+        if projectedSpend <= variableBudgetLimit * 0.9 {
+            return .onTrack
+        }
+        if projectedSpend <= variableBudgetLimit {
+            return .watch
+        }
+        return .overBudgetRisk
     }
 }

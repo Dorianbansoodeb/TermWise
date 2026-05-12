@@ -11,6 +11,9 @@ struct DashboardView: View {
     /// Selected mode for the Spending Trend chart. `@State` keeps the choice for the lifetime
     /// of the dashboard view (i.e. for the app session) without persisting across launches.
     @State private var spendTrendMode: SpendTrendMode = .variable
+    /// Selected window for **Variable** Spending Trend only. Total trend always uses the
+    /// current calendar month.
+    @State private var variableSpendTrendRange: SpendTrendRange = .currentMonth
 
     /// Two-mode toggle for the Spending Trend chart card.
     enum SpendTrendMode {
@@ -139,59 +142,75 @@ struct DashboardView: View {
         }
     }
 
+    private var variableChartShowsMonthEndProjection: Bool {
+        !variableSpendTrendRange.isTrailingShortRange
+    }
+
     /// Variable Spending Trend — pace-based risk on **projected** flexible spending vs variable
     /// budget. Gray dashed = `variableBudget` ("Limit $X"), orange dashed = budget pace,
     /// red dashed = projected. The green Spend Limit reference is intentionally omitted here:
     /// it lives at `availableToBudget − savingsTarget` and would not sit on the same axis as
     /// the variable budget, so showing it would distort scale.
     private var variableSpendTrendCard: some View {
-        let pace = appState.variableSpendingPace
+        let r = variableSpendTrendRange
+        let scaled = appState.spendTrendScaledPeriod(forRange: r)
+        let projectedVariable = appState.projectedVariableSpendEndOfWindow(forRange: r)
+        let badgeStatus = VariableSpendingPace.riskStatus(
+            projectedSpend: projectedVariable,
+            variableBudgetLimit: scaled.periodVariableLimit
+        )
         let badgeColor: Color = {
-            switch pace.status {
+            switch badgeStatus {
             case .onTrack: return .green
             case .watch: return .orange
             case .overBudgetRisk: return .red
             }
         }()
-        let projectedOverLimit = max(0, pace.projectedMonthEndSpend - pace.variableBudget)
+        let projectedOverLimit = max(0, projectedVariable - scaled.periodVariableLimit)
 
         return VStack(alignment: .leading, spacing: 10) {
             spendTrendHeader(
                 title: "Variable Spending Trend",
                 subtitle: "Flexible spending risk",
-                badgeText: pace.status.badgeText,
+                badgeText: badgeStatus.badgeText,
                 badgeColor: badgeColor
             )
 
             LineTrendChartView(
                 mode: .variable,
-                dailyActualCumulative: appState.dailyVariableActualCumulative(),
-                currentDay: appState.currentDayOfMonth,
-                daysInMonth: appState.daysInCurrentMonth,
-                projectedEndValue: pace.projectedMonthEndSpend,
+                dailyActualCumulative: appState.dailyVariableActualCumulativeForRange(r),
+                todayChartSlot: appState.spendTrendTodayChartSlotForRange(r),
+                selectedDays: appState.spendTrendSelectedDayCountForRange(r),
+                projectedEndValue: projectedVariable,
                 projectedColor: badgeColor,
-                limitValue: pace.variableBudget,
+                limitValue: scaled.periodVariableLimit,
                 limitLabelPrefix: "Limit",
                 showGreenEnvelopeLine: false,
                 greenLineAxisValue: 0,
                 greenLineLabelPrefix: "Spend Limit",
                 greenLineLabelAmount: 0,
-                projectedForDay: { appState.projectedVariableAmountForDay(dayNumber: $0) }
+                drawsProjectionLine: variableChartShowsMonthEndProjection,
+                showsProjectedAxisLabel: variableChartShowsMonthEndProjection,
+                projectedForDay: { appState.projectedVariableForDayInRange(dayNumber: $0, range: r) },
+                unpaidFixedBillsRemaining: 0,
+                dateLabelForIndex: { appState.spendTrendChartDateLabel(chartIndex: $0, forRange: r) }
             )
             .frame(height: 200)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Fixed bills are tracked separately. This chart shows flexible spending pace.")
+                Text("Flexible spending over selected period.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                if projectedOverLimit > 0 {
+                if variableChartShowsMonthEndProjection, projectedOverLimit > 0 {
                     Text("Projected over spend limit by \(projectedOverLimit.formatted(appState.currencyFormatter))")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundStyle(.red)
                 }
             }
+
+            variableSpendTrendRangePicker
         }
         .padding()
         .background(Color(.secondarySystemBackground))
@@ -212,8 +231,10 @@ struct DashboardView: View {
     /// When `savingsTarget > 0` we also show the savings-aware reference line:
     /// "Spend Limit after savings target: $X.XX".
     private var totalSpendTrendCard: some View {
-        let pace = appState.totalSpendingPace
-        let showSpendLimitReference = pace.savingsTarget > 0 && pace.spendLimit > 0
+        let r = SpendTrendRange.currentMonth
+        let scaled = appState.spendTrendScaledPeriod(forRange: r)
+        let pace = appState.totalSpendTrendEvaluation(forSpendTrendRange: r)
+        let showSpendLimitReference = scaled.periodSavingsTarget > 0 && scaled.periodSpendLimit > 0
         let badgeColor: Color = {
             switch pace.status {
             case .onTrack: return .green
@@ -232,20 +253,23 @@ struct DashboardView: View {
 
             LineTrendChartView(
                 mode: .total,
-                dailyActualCumulative: appState.dailyActualCumulative(),
-                currentDay: appState.currentDayOfMonth,
-                daysInMonth: appState.daysInCurrentMonth,
+                dailyActualCumulative: appState.dailyActualCumulativeForRange(r),
+                todayChartSlot: appState.spendTrendTodayChartSlotForRange(r),
+                selectedDays: appState.spendTrendSelectedDayCountForRange(r),
                 projectedEndValue: pace.projectedMonthEndSpend,
                 projectedColor: badgeColor,
-                limitValue: pace.availableToBudget,
+                limitValue: scaled.periodAvailableToBudget,
                 limitLabelPrefix: "Available",
                 showGreenEnvelopeLine: showSpendLimitReference,
-                greenLineAxisValue: pace.spendLimit,
+                greenLineAxisValue: scaled.periodSpendLimit,
                 greenLineLabelPrefix: "Spend Limit",
-                greenLineLabelAmount: pace.spendLimit,
-                projectedForDay: { appState.projectedTotalAmountForDay(dayNumber: $0) },
-                projectedVariableForDay: { appState.projectedVariableAmountForDay(dayNumber: $0) },
-                unpaidFixedBillsRemaining: pace.unpaidFixedBillsRemaining
+                greenLineLabelAmount: scaled.periodSpendLimit,
+                drawsProjectionLine: true,
+                showsProjectedAxisLabel: true,
+                projectedForDay: { appState.projectedTotalForDayInRange(dayNumber: $0, range: r) },
+                projectedVariableForDay: { appState.projectedVariableForDayInRange(dayNumber: $0, range: r) },
+                unpaidFixedBillsRemaining: pace.unpaidFixedBillsRemaining,
+                dateLabelForIndex: { appState.spendTrendChartDateLabel(chartIndex: $0, forRange: r) }
             )
             .frame(height: 200)
 
@@ -255,9 +279,11 @@ struct DashboardView: View {
                     .foregroundStyle(.secondary)
 
                 if showSpendLimitReference {
-                    Text("Spend Limit after savings target: \(pace.spendLimit.formatted(appState.currencyFormatter))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        "Spend Limit after savings target: \(scaled.periodSpendLimit.formatted(appState.currencyFormatter))"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 }
 
                 totalSpendTrendStatusMessage(pace: pace)
@@ -290,41 +316,63 @@ struct DashboardView: View {
         }
     }
 
-    /// Header — title + risk-context subtitle + pill + swap icon.
+    /// Header — title + subtitle + badge + swap icon only (time range sits below the chart).
     private func spendTrendHeader(title: String, subtitle: String, badgeText: String, badgeColor: Color) -> some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.headline)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.88)
+                    .layoutPriority(1)
                 Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            Text(badgeText)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(badgeColor.opacity(0.15))
-                .foregroundStyle(badgeColor)
-                .clipShape(Capsule())
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    spendTrendMode = (spendTrendMode == .variable) ? .total : .variable
+            HStack(spacing: 8) {
+                Text(badgeText)
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(badgeColor.opacity(0.15))
+                    .foregroundStyle(badgeColor)
+                    .clipShape(Capsule())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        spendTrendMode = (spendTrendMode == .variable) ? .total : .variable
+                    }
+                } label: {
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(6)
+                        .background(Color.secondary.opacity(0.12), in: Circle())
                 }
-            } label: {
-                Image(systemName: "arrow.left.arrow.right")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(6)
-                    .background(Color.secondary.opacity(0.12), in: Circle())
+                .buttonStyle(.plain)
+                .accessibilityLabel("Toggle spending trend mode")
+                .accessibilityHint(spendTrendMode == .variable ? "Switch to Total Spending Trend" : "Switch to Variable Spending Trend")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Toggle spending trend mode")
-            .accessibilityHint(spendTrendMode == .variable ? "Switch to Total Spending Trend" : "Switch to Variable Spending Trend")
+            .fixedSize(horizontal: true, vertical: false)
         }
+    }
+
+    /// Variable-only time window picker (Total Spending Trend is month-scoped only).
+    private var variableSpendTrendRangePicker: some View {
+        Picker("Time range", selection: $variableSpendTrendRange) {
+            Text("7D").tag(SpendTrendRange.sevenDays)
+            Text("1W").tag(SpendTrendRange.oneWeek)
+            Text("30D").tag(SpendTrendRange.thirtyDays)
+            Text("Month").tag(SpendTrendRange.currentMonth)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Spending trend time range")
     }
 
     @ViewBuilder
@@ -905,8 +953,10 @@ private struct LineTrendChartView: View {
 
     let mode: Mode
     let dailyActualCumulative: [Double]
-    let currentDay: Int
-    let daysInMonth: Int
+    /// 1-based index of today within the plotted window (`Month` ⇒ `currentDayOfMonth`; `7D`/`30D` ⇒ `selectedDays`).
+    let todayChartSlot: Int
+    /// Total horizontal slots plotted (`7`, `30`, or full month length).
+    let selectedDays: Int
     let projectedEndValue: Double
     let projectedColor: Color
     /// Gray dashed line value — variable: variable budget ("Limit $X"); total: `availableToBudget`
@@ -919,8 +969,12 @@ private struct LineTrendChartView: View {
     let greenLineAxisValue: Double
     /// Pill prefix for the green-line label, e.g. "Spend Limit" → renders "Spend Limit $X".
     let greenLineLabelPrefix: String
-    /// Dollar amount rendered in the green-line pill (total mode: `spendLimit`).
+    /// Dollar amount shown beside the green line (total mode: `spendLimit`).
     let greenLineLabelAmount: Double
+    /// When false, skip the red dashed projection segment and the **Projected** axis label (short-range variable views).
+    let drawsProjectionLine: Bool
+    /// When false, hide the **Projected** text label even if `drawsProjectionLine` is true (unused — kept for clarity).
+    let showsProjectedAxisLabel: Bool
     let projectedForDay: (Int) -> Double
     /// Total mode only — projected variable cumulative for `dayNumber`. Used in the future-day
     /// tooltip to show variable separately from the total projection.
@@ -928,6 +982,7 @@ private struct LineTrendChartView: View {
     /// Total mode only — Σ `max(0, planned − actualPaid)` for fixed bills this month. Surfaced
     /// in the future-day tooltip as "Remaining fixed bills". Default `0` keeps variable mode quiet.
     var unpaidFixedBillsRemaining: Double = 0
+    var dateLabelForIndex: (Int) -> String = { idx in "\(idx + 1)" }
 
     @State private var selectedDayIndex: Int? = nil
 
@@ -944,9 +999,10 @@ private struct LineTrendChartView: View {
             let height = max(1, outerHeight - topInset - bottomInset)
 
             let greenForScale = (showGreenEnvelopeLine && greenLineAxisValue > 0) ? greenLineAxisValue : 0.0
+            let projectionScaleValues: [Double] = drawsProjectionLine ? [projectedEndValue] : []
             let dataMax = max(
                 1,
-                (dailyActualCumulative + [projectedEndValue, limitValue, greenForScale]).max() ?? 1
+                (dailyActualCumulative + projectionScaleValues + [limitValue, greenForScale]).max() ?? 1
             )
             let maxY = max(dataMax * 1.25, limitValue * 1.2, greenForScale * 1.05)
             let yLimit = topInset + (height - (CGFloat(limitValue) / CGFloat(maxY) * height))
@@ -955,12 +1011,10 @@ private struct LineTrendChartView: View {
             let projectedX = leftInset + width
 
             /// Label priority (per spec): Projected > Available/Limit > Spend Limit > Budget Pace.
-            /// The gray "Available" pill is anchored on the left edge while the green
-            /// "Spend Limit" pill is on the right — they never overlap horizontally, so
-            /// matching Y values aren't a collision. Only the red "Projected" pill (also on
-            /// the right) can crowd green; in that case green hides since Projected outranks it.
+            /// Projected label hides first when vertical space is tight; then green Spend Limit.
             let hideGreenLineLabel =
-                showGreenEnvelopeLine && greenForScale > 0
+                showsProjectedAxisLabel
+                && showGreenEnvelopeLine && greenForScale > 0
                 && abs(yGreen - yProjected) < 22
 
             ZStack(alignment: .topLeading) {
@@ -977,13 +1031,15 @@ private struct LineTrendChartView: View {
 
                 savingsEnvelopeLine(width: width, yGreen: yGreen, show: showGreenEnvelopeLine && greenForScale > 0)
 
-                projectionLine(
-                    width: width,
-                    height: height,
-                    maxY: maxY,
-                    projectedX: projectedX,
-                    projectedY: yProjected
-                )
+                if drawsProjectionLine {
+                    projectionLine(
+                        width: width,
+                        height: height,
+                        maxY: maxY,
+                        projectedX: projectedX,
+                        projectedY: yProjected
+                    )
+                }
 
                 limitLabel(yLimit: yLimit)
 
@@ -995,7 +1051,9 @@ private struct LineTrendChartView: View {
                     savingsTargetLabel(yGreen: yGreen, yLimit: yLimit, chartWidth: width)
                 }
 
-                projectedLabel(yProjected: yProjected, yLimit: yLimit, yGreen: yGreen, projectedX: projectedX)
+                if showsProjectedAxisLabel {
+                    projectedLabel(yProjected: yProjected, yLimit: yLimit, yGreen: yGreen, projectedX: projectedX)
+                }
 
                 dayAxis(outerWidth: outerWidth, outerHeight: outerHeight)
 
@@ -1016,8 +1074,8 @@ private struct LineTrendChartView: View {
                     .onChanged { value in
                         let clampedX = min(max(leftInset, value.location.x), leftInset + width)
                         let ratio = (clampedX - leftInset) / max(1, width)
-                        let index = Int(round(ratio * CGFloat(max(1, daysInMonth - 1))))
-                        selectedDayIndex = min(max(0, index), max(0, daysInMonth - 1))
+                        let index = Int(round(ratio * CGFloat(max(1, selectedDays - 1))))
+                        selectedDayIndex = min(max(0, index), max(0, selectedDays - 1))
                     }
                     .onEnded { _ in
                         selectedDayIndex = nil
@@ -1031,13 +1089,21 @@ private struct LineTrendChartView: View {
     private func actualPath(width: CGFloat, height: CGFloat, maxY: Double) -> some View {
         Path { path in
             guard !dailyActualCumulative.isEmpty else { return }
+            let todayIdx = max(0, min(todayChartSlot - 1, dailyActualCumulative.count - 1))
+
             let firstY = topInset + (height - (CGFloat(dailyActualCumulative[0]) / CGFloat(maxY) * height))
             path.move(to: CGPoint(x: leftInset, y: firstY))
 
-            for dayIndex in 1..<dailyActualCumulative.count {
+            if todayIdx == 0 {
+                let seg = width / CGFloat(max(1, selectedDays - 1))
+                path.addLine(to: CGPoint(x: leftInset + seg * 0.35, y: firstY))
+                return
+            }
+
+            for dayIndex in 1...todayIdx {
                 let previous = dailyActualCumulative[dayIndex - 1]
                 let current = dailyActualCumulative[dayIndex]
-                let x = leftInset + CGFloat(dayIndex) / CGFloat(max(1, daysInMonth - 1)) * width
+                let x = leftInset + CGFloat(dayIndex) / CGFloat(max(1, selectedDays - 1)) * width
                 let prevY = topInset + (height - (CGFloat(previous) / CGFloat(maxY) * height))
                 let currY = topInset + (height - (CGFloat(current) / CGFloat(maxY) * height))
                 path.addLine(to: CGPoint(x: x, y: prevY))
@@ -1049,7 +1115,7 @@ private struct LineTrendChartView: View {
 
     private func paceLine(width: CGFloat, height: CGFloat, maxY: Double) -> some View {
         Path { path in
-            guard limitValue > 0, daysInMonth > 0 else { return }
+            guard limitValue > 0, selectedDays > 0 else { return }
             let endY = topInset + (height - (CGFloat(limitValue) / CGFloat(maxY) * height))
             path.move(to: CGPoint(x: leftInset, y: topInset + height))
             path.addLine(to: CGPoint(x: leftInset + width, y: endY))
@@ -1091,8 +1157,10 @@ private struct LineTrendChartView: View {
         projectedY: CGFloat
     ) -> some View {
         Path { path in
-            guard let currentValue = dailyActualCumulative.last else { return }
-            let currentX = leftInset + CGFloat(max(0, currentDay - 1)) / CGFloat(max(1, daysInMonth - 1)) * width
+            let todayIdx = max(0, min(todayChartSlot - 1, dailyActualCumulative.count - 1))
+            guard todayIdx < dailyActualCumulative.count else { return }
+            let currentValue = dailyActualCumulative[todayIdx]
+            let currentX = leftInset + CGFloat(max(0, todayChartSlot - 1)) / CGFloat(max(1, selectedDays - 1)) * width
             let currentY = topInset + (height - (CGFloat(currentValue) / CGFloat(maxY) * height))
             path.move(to: CGPoint(x: currentX, y: currentY))
             path.addLine(to: CGPoint(x: projectedX, y: projectedY))
@@ -1102,13 +1170,13 @@ private struct LineTrendChartView: View {
 
     // MARK: - Labels (collision-aware)
 
-    /// Gray reference label (variable: "Limit $X"; total: "Available $X"). Never "Spend Limit".
+    /// Gray reference label (variable: "Limit $X"; total: "Available $X").
     private func limitLabel(yLimit: CGFloat) -> some View {
         Group {
             if limitValue > 0 {
                 let limitText = "\(limitLabelPrefix) \(limitValue.formatted(appState.currencyFormatter))"
                 let preferredY = max(topInset + 8, yLimit - 12)
-                pillLabel(limitText, color: .secondary)
+                plainAxisLabel(limitText, color: .secondary)
                     .position(x: leftInset + 6 + labelWidth(for: limitText) / 2, y: preferredY)
             }
         }
@@ -1123,14 +1191,13 @@ private struct LineTrendChartView: View {
                 let yLine = topInset + (height - (CGFloat(valueAt) / CGFloat(maxY) * height))
                 let candidateY = yLine + 14
                 let safeY = abs(candidateY - yLimit) < 16 ? max(topInset + 6, yLine - 14) : candidateY
-                pillLabel("Budget Pace", color: .orange)
+                plainAxisLabel("Budget Pace", color: .orange)
                     .position(x: xPos, y: safeY)
             }
         }
     }
 
-    /// Green-line pill — total: "Spend Limit $X". Hidden when `hideGreenLineLabel` collides
-    /// with the gray line, since gray (Available / Limit) ranks above Spend Limit in priority.
+    /// Green-line label — total: "Spend Limit $X". Plain text (no capsule), same spirit as gray limit label.
     private func savingsTargetLabel(yGreen: CGFloat, yLimit: CGFloat, chartWidth: CGFloat) -> some View {
         Group {
             if greenLineLabelAmount > 0 {
@@ -1139,7 +1206,7 @@ private struct LineTrendChartView: View {
                 let above = yGreen - 12
                 let below = yGreen + 12
                 let candidate = (abs(above - yLimit) < 16) ? below : above
-                pillLabel(labelText, color: .green)
+                plainAxisLabel(labelText, color: .green)
                     .position(x: xPos, y: candidate)
             }
         }
@@ -1159,30 +1226,26 @@ private struct LineTrendChartView: View {
         if greenShown && abs(candidate - yGreen) < 14 {
             candidate = (candidate > yGreen) ? candidate + 14 : candidate - 14
         }
-        return pillLabel(label, color: projectedColor)
+        return plainAxisLabel(label, color: projectedColor)
             .position(x: labelX, y: candidate)
     }
 
-    private func pillLabel(_ text: String, color: Color) -> some View {
+    private func plainAxisLabel(_ text: String, color: Color) -> some View {
         Text(text)
             .font(.caption2)
-            .fontWeight(.semibold)
+            .fontWeight(.medium)
             .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(.ultraThinMaterial, in: Capsule())
     }
 
-    /// Cheap label-width estimate used for collision-safe positioning.
     private func labelWidth(for text: String) -> CGFloat {
         CGFloat(text.count) * 6.5 + 14
     }
 
     private func dayAxis(outerWidth: CGFloat, outerHeight: CGFloat) -> some View {
         HStack {
-            Text("1")
+            Text(dateLabelForIndex(0))
             Spacer()
-            Text("\(daysInMonth)")
+            Text(dateLabelForIndex(max(0, selectedDays - 1)))
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
@@ -1202,8 +1265,8 @@ private struct LineTrendChartView: View {
         maxY: Double
     ) -> some View {
         let dayNumber = index + 1
-        let x = leftInset + CGFloat(index) / CGFloat(max(1, daysInMonth - 1)) * width
-        let isPastOrToday = dayNumber <= currentDay
+        let x = leftInset + CGFloat(index) / CGFloat(max(1, selectedDays - 1)) * width
+        let isPastOrToday = dayNumber <= todayChartSlot
 
         // Actual cumulative variable spend on this day, only available for days <= today.
         let actualForDay: Double? = {
@@ -1213,14 +1276,17 @@ private struct LineTrendChartView: View {
             return dailyActualCumulative[arrayIndex]
         }()
 
-        // Projected value follows the red projection line: equals actual on past days, extrapolates for future days.
+        // Projected value follows the red projection line on future days.
         let projected = projectedForDay(dayNumber)
 
-        // Budget pace follows the orange dashed line: limit * day/daysInMonth. Variable mode only.
-        let paceForDay = limitValue * (Double(dayNumber) / Double(max(1, daysInMonth)))
+        // Budget pace follows the orange dashed line scaled across `selectedDays`.
+        let paceForDay = limitValue * (Double(dayNumber) / Double(max(1, selectedDays)))
 
-        // Anchor the dot on the red projection line for visual consistency with the projection.
-        let dotY = topInset + (height - (CGFloat(projected) / CGFloat(maxY) * height))
+        let valueForDot: Double = {
+            if let a = actualForDay { return a }
+            return projected
+        }()
+        let dotY = topInset + (height - (CGFloat(valueForDot) / CGFloat(maxY) * height))
 
         Path { path in
             path.move(to: CGPoint(x: x, y: topInset))
@@ -1255,20 +1321,20 @@ private struct LineTrendChartView: View {
     /// - Variable, past/today : Actual · Budget Pace
     /// - Variable, future     : Projected · Budget Pace
     /// - Total,    past/today : Actual (Available is gray line only; Spend Limit is on-chart only)
-    /// - Total,    future     : Projected total · Projected variable · Remaining fixed bills
+    /// - Total,    future     : Projected total spending · Remaining fixed bills (variable splits omitted intentionally)
     ///
-    /// Projected is **never** shown for `selectedDay <= currentDay`; Actual is **never** shown
-    /// for `selectedDay > currentDay`.
+    /// Projected is **never** shown for `selectedSlot <= todayChartSlot`; Actual is **never** shown
+    /// for `selectedSlot > todayChartSlot`.
     private func tooltipBubble(
         day index: Int,
         actual: Double?,
         projected: Double,
         pace: Double
     ) -> some View {
-        // `actual` is non-nil only for `selectedDay <= currentDay` (set upstream in
+        // `actual` is non-nil only for `slot <= todayChartSlot` (set upstream in
         // selectedDayOverlay). The presence of actual is the past/future signal.
         VStack(alignment: .leading, spacing: 4) {
-            Text(dateLabel(for: index))
+            Text(dateLabelForIndex(index))
                 .font(.caption2)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
@@ -1276,15 +1342,20 @@ private struct LineTrendChartView: View {
             if mode == .variable {
                 if let actual {
                     tooltipRow(label: "Actual", value: actual, color: .blue)
-                } else {
+                } else if drawsProjectionLine {
                     tooltipRow(label: "Projected", value: projected, color: projectedColor)
                 }
                 tooltipRow(label: "Budget Pace", value: pace, color: .orange)
             } else if let actual {
                 tooltipRow(label: "Actual", value: actual, color: .blue)
+                tooltipRow(label: "Available to Budget", value: limitValue, color: .secondary)
             } else {
                 tooltipRow(label: "Projected total spending", value: projected, color: projectedColor)
+                if let pv = projectedVariableForDay?(index + 1) {
+                    tooltipRow(label: "Projected variable spending", value: pv, color: .blue)
+                }
                 tooltipRow(label: "Remaining fixed bills", value: unpaidFixedBillsRemaining, color: .secondary)
+                tooltipRow(label: "Available to Budget", value: limitValue, color: .secondary)
             }
         }
         .padding(.horizontal, 10)
@@ -1310,8 +1381,8 @@ private struct LineTrendChartView: View {
     }
 
     /// Keeps the tooltip inside the chart bounds. Row count mirrors `tooltipBubble`:
-    /// Variable: date · Actual/Projected · Budget Pace (3). Total past: date · Actual (2).
-    /// Total future: date · projected total · remaining fixed (3).
+    /// Variable: date · Actual/(optional Projected) · Budget Pace (3). Total past: date · Actual · Available (3).
+    /// Total future: date · projected total · projected variable · remaining fixed · Available (5).
     private func tooltipPosition(
         anchorX: CGFloat,
         anchorY: CGFloat,
@@ -1322,7 +1393,7 @@ private struct LineTrendChartView: View {
         let rowHeight: CGFloat = 18
         let totalRows: CGFloat = {
             if mode == .variable { return 3 }
-            return hasActual ? 2 : 3
+            return hasActual ? 3 : 5
         }()
         let estimatedWidth: CGFloat = 200
         let estimatedHeight: CGFloat = max(64, totalRows * rowHeight + 16)
@@ -1339,13 +1410,6 @@ private struct LineTrendChartView: View {
         let clampedY = min(outerHeight - halfH - margin, max(halfH + margin, chosenY))
 
         return CGPoint(x: clampedX, y: clampedY)
-    }
-
-    private func dateLabel(for dayIndex: Int) -> String {
-        let month = Calendar.current.component(.month, from: Date())
-        let symbols = Calendar.current.shortMonthSymbols
-        let name = symbols[max(0, min(symbols.count - 1, month - 1))]
-        return "\(name) \(dayIndex + 1)"
     }
 }
 

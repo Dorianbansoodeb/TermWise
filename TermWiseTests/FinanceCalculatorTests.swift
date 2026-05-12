@@ -856,8 +856,8 @@ final class FinanceCalculatorTests: XCTestCase {
     }
 
     // Tooltip is context-sensitive: past/today shows Actual (no Projected); future shows
-    // Projected (no Actual). Variable mode adds Budget Pace; total mode never duplicates Spend Limit in the callout;
-    // Available appears only on the gray chart line, not in the tooltip.
+    // Projected (no Actual). Variable mode adds Budget Pace; Total mode includes Available to
+    // Budget in the callout per dashboard spec; Spend Limit is chart-only.
 
     func test_spendingTrend_tooltip_variable_past_showsActual_notProjected() {
         let titles = FinanceCalculator.spendingTrendVariableTooltipRowTitlesPast
@@ -874,36 +874,29 @@ final class FinanceCalculatorTests: XCTestCase {
         XCTAssertFalse(titles.contains("Actual"))
     }
 
-    func test_spendingTrend_tooltip_total_past_showsActual_only_neverAvailableOrProjectedSpendLimitOrSavings() {
+    func test_spendingTrend_tooltip_total_past_showsActualAndAvailable_neverSpendLimitOrSavings() {
         let titles = FinanceCalculator.spendingTrendTotalTooltipRowTitlesPast
-        XCTAssertEqual(titles, ["Actual"])
+        XCTAssertEqual(titles, ["Actual", "Available to Budget"])
         XCTAssertTrue(titles.contains("Actual"))
-        XCTAssertFalse(titles.contains("Available to Budget"))
-        XCTAssertFalse(titles.contains(where: { $0.localizedCaseInsensitiveContains("Available") }))
+        XCTAssertTrue(titles.contains("Available to Budget"))
         XCTAssertFalse(titles.contains(where: { $0.localizedCaseInsensitiveContains("Spend Limit") }))
         XCTAssertFalse(titles.contains("Projected"))
         XCTAssertFalse(titles.contains(where: { $0.localizedCaseInsensitiveContains("Savings") }))
     }
 
-    func test_spendingTrend_tooltip_total_future_showsProjectedTotalAndRemainingFixed_neverVariableActualAvailableOrSpendLimit() {
+    func test_spendingTrend_tooltip_total_future_showsFullBreakdown_neverSpendLimit() {
         let titles = FinanceCalculator.spendingTrendTotalTooltipRowTitlesFuture
         XCTAssertEqual(
             titles,
             [
                 "Projected total spending",
-                "Remaining fixed bills"
+                "Projected variable spending",
+                "Remaining fixed bills",
+                "Available to Budget"
             ]
         )
-        XCTAssertTrue(titles.contains("Projected total spending"))
-        XCTAssertTrue(titles.contains("Remaining fixed bills"))
-        XCTAssertFalse(
-            titles.contains(where: { $0.localizedCaseInsensitiveContains("Projected variable") }),
-            "Projected variable spending row was removed — projected total + remaining fixed is enough."
-        )
-        XCTAssertFalse(titles.contains("Available to Budget"))
-        XCTAssertFalse(titles.contains(where: { $0.localizedCaseInsensitiveContains("Available") }))
-        XCTAssertFalse(titles.contains("Actual"))
         XCTAssertFalse(titles.contains(where: { $0.localizedCaseInsensitiveContains("Spend Limit") }))
+        XCTAssertFalse(titles.contains("Actual"))
         XCTAssertFalse(titles.contains(where: { $0.localizedCaseInsensitiveContains("Savings") }))
     }
 
@@ -2201,6 +2194,205 @@ final class FinanceCalculatorTests: XCTestCase {
         XCTAssertEqual(group.income, 100, accuracy: 0.0001)
         XCTAssertEqual(group.expenses, 30 + 15, accuracy: 0.0001)
         XCTAssertEqual(group.net, 100 - 45, accuracy: 0.0001)
+    }
+
+    // MARK: - Spending trend range math
+
+    func test_spendTrendRange_selectedDays_sevenTrailingAndMonthLength() {
+        XCTAssertEqual(SpendTrendRange.sevenDays.selectedDays(daysInCalendarMonth: 31), 7)
+        XCTAssertEqual(SpendTrendRange.oneWeek.selectedDays(daysInCalendarMonth: 31), 7)
+        XCTAssertEqual(SpendTrendRange.thirtyDays.selectedDays(daysInCalendarMonth: 28), 30)
+        XCTAssertEqual(SpendTrendRange.currentMonth.selectedDays(daysInCalendarMonth: 31), 31)
+        XCTAssertEqual(SpendTrendRange.currentMonth.selectedDays(daysInCalendarMonth: 28), 28)
+    }
+
+    func test_spendTrendRange_variablePickerCases_orderAndCount() {
+        XCTAssertEqual(SpendTrendRange.variablePickerCases.count, 4)
+        XCTAssertEqual(
+            SpendTrendRange.variablePickerCases,
+            [.sevenDays, .oneWeek, .thirtyDays, .currentMonth]
+        )
+    }
+
+    func test_spendTrendRange_totalChart_isMonthOnly_documented() {
+        // Total Spending Trend uses `SpendTrendRange.currentMonth` only in `DashboardView`;
+        // short-range enum cases exist for Variable mode exclusively.
+        XCTAssertEqual(SpendTrendRange.currentMonth.selectedDays(daysInCalendarMonth: 31), 31)
+    }
+
+    func test_spendTrend_selectedWindow_currentMonthSpansFullMonth_calendarDays() {
+        let dim = 31
+        let days = SpendingSeries.windowDayStarts(
+            for: .currentMonth,
+            now: refDate,
+            calendar: cal,
+            daysInCalendarMonth: dim
+        )
+        XCTAssertEqual(days.count, dim)
+        XCTAssertEqual(cal.component(.day, from: days.first!), 1)
+        XCTAssertEqual(cal.component(.day, from: days.last!), dim)
+        XCTAssertEqual(cal.component(.month, from: days.last!), cal.component(.month, from: refDate))
+    }
+
+    func test_spendTrend_selectedWindow_thirtyEndsToday() {
+        let dim = 31
+        let days = SpendingSeries.windowDayStarts(
+            for: .thirtyDays,
+            now: refDate,
+            calendar: cal,
+            daysInCalendarMonth: dim
+        )
+        XCTAssertEqual(days.count, 30)
+        XCTAssertEqual(cal.startOfDay(for: days.last!), cal.startOfDay(for: refDate))
+    }
+
+    func test_spendTrend_variableSeries_excludesFixedCategories() {
+        let budgetItems = [
+            makeBudget(category: "Groceries", planned: 200, type: .variable),
+            makeBudget(category: "Rent", planned: 900, type: .fixed, frequency: .monthly, dueDay: 1),
+            makeBudget(category: "Phone bill", planned: 40, type: .fixed, frequency: .monthly, dueDay: 10),
+            makeBudget(category: "Tuition/Savings", planned: 250, type: .fixed, frequency: .monthly, dueDay: 5),
+            makeBudget(category: "Subscriptions", planned: 20, type: .fixed, frequency: .monthly, dueDay: 12),
+            makeBudget(category: "Loan payments", planned: 60, type: .fixed, frequency: .monthly, dueDay: 20),
+        ]
+
+        let txns = [
+            makeTxn(amount: 25, category: "Groceries", type: .expense, day: 13),
+            makeTxn(amount: 900, category: "Rent", type: .expense, day: 13),
+            makeTxn(amount: 40, category: "Phone bill", type: .expense, day: 13),
+            makeTxn(amount: 250, category: "Tuition/Savings", type: .expense, day: 13),
+            makeTxn(amount: 20, category: "Subscriptions", type: .expense, day: 13),
+            makeTxn(amount: 60, category: "Loan payments", type: .expense, day: 13),
+        ]
+
+        let orderedDays = SpendingSeries.windowDayStarts(
+            for: .sevenDays,
+            now: refDate,
+            calendar: cal,
+            daysInCalendarMonth: 31
+        )
+        XCTAssertEqual(orderedDays.count, 7)
+        let series = SpendingSeries.cumulativeVariableSpendPerDaySlot(
+            transactions: txns,
+            budgetItems: budgetItems,
+            orderedDayStarts: orderedDays,
+            calendar: cal,
+            elapsedSlotsInclusiveOneBased: 7
+        )
+
+        XCTAssertEqual(series.last!, 25, accuracy: 0.0001, "Only Groceries should count toward variable pacing")
+    }
+
+    func test_spendTrend_totalSeries_includesFixedAndVariableExpenseCategories() {
+        let orderedDays = SpendingSeries.windowDayStarts(
+            for: .sevenDays,
+            now: refDate,
+            calendar: cal,
+            daysInCalendarMonth: 31
+        )
+        let txns = [
+            makeTxn(amount: 900, category: "Rent", type: .expense, day: 14),
+            makeTxn(amount: 12, category: "Coffee", type: .expense, day: 15),
+        ]
+        let cumulative = SpendingSeries.cumulativeTotalSpendPerDaySlot(
+            transactions: txns,
+            orderedDayStarts: orderedDays,
+            calendar: cal,
+            elapsedSlotsInclusiveOneBased: 7
+        )
+
+        XCTAssertEqual(cumulative.last!, 900 + 12, accuracy: 0.0001)
+    }
+
+    func test_spendTrend_scaledPeriod_formula_andMonthIdentity() {
+        let avail = 3000.0
+        let savings = 600.0
+        let monthlyVar = 930.0
+        let dim = 31
+
+        let monthScaled = SpendTrendRangeMath.scaledPeriod(
+            availableToBudget: avail,
+            savingsTarget: savings,
+            monthlyVariableLimit: monthlyVar,
+            selectedDays: dim,
+            daysInMonth: dim
+        )
+        XCTAssertEqual(monthScaled.periodAvailableToBudget, avail, accuracy: 0.0001)
+        XCTAssertEqual(monthScaled.periodSavingsTarget, savings, accuracy: 0.0001)
+        XCTAssertEqual(monthScaled.periodSpendLimit, avail - savings, accuracy: 0.0001)
+        XCTAssertEqual(monthScaled.periodVariableLimit, monthlyVar, accuracy: 0.0001)
+
+        let sevenScaled = SpendTrendRangeMath.scaledPeriod(
+            availableToBudget: avail,
+            savingsTarget: savings,
+            monthlyVariableLimit: monthlyVar,
+            selectedDays: 7,
+            daysInMonth: dim
+        )
+        let ratio = Double(7) / Double(dim)
+
+        XCTAssertEqual(sevenScaled.periodVariableLimit, monthlyVar * ratio, accuracy: 0.0001)
+        XCTAssertEqual(sevenScaled.periodAvailableToBudget, avail * ratio, accuracy: 0.0001)
+        XCTAssertEqual(sevenScaled.periodSavingsTarget, savings * ratio, accuracy: 0.0001)
+        XCTAssertEqual(sevenScaled.periodSpendLimit, (avail - savings) * ratio, accuracy: 0.0001)
+
+        let thirtyScaled = SpendTrendRangeMath.scaledPeriod(
+            availableToBudget: avail,
+            savingsTarget: savings,
+            monthlyVariableLimit: monthlyVar,
+            selectedDays: 30,
+            daysInMonth: dim
+        )
+        let ratio30 = Double(30) / Double(dim)
+
+        XCTAssertEqual(thirtyScaled.periodVariableLimit, monthlyVar * ratio30, accuracy: 0.0001)
+        XCTAssertEqual(thirtyScaled.periodAvailableToBudget, avail * ratio30, accuracy: 0.0001)
+        XCTAssertEqual(thirtyScaled.periodSavingsTarget, savings * ratio30, accuracy: 0.0001)
+        XCTAssertEqual(thirtyScaled.periodSpendLimit, (avail - savings) * ratio30, accuracy: 0.0001)
+    }
+
+    func test_totalSpendTrend_projection_invariant_whenPayingExpectedFixed_insideWindow() {
+        let elapsed = 10
+        let span = 30
+        let totalBefore = 400.0
+        let variableSpent = 100.0
+        let unpaidBefore = 100.0
+        let payment = 50.0
+
+        let before = TotalSpendingPace.evaluateWithTotals(
+            totalSpentThisPeriod: totalBefore,
+            availableToBudget: 2000,
+            savingsTarget: 0,
+            variableSpentSoFar: variableSpent,
+            expectedFixedBillsThisPeriod: 0,
+            unpaidFixedBillsRemainingThisPeriod: unpaidBefore,
+            currentDayOfPeriod: elapsed,
+            periodLengthDays: span
+        )
+
+        let after = TotalSpendingPace.evaluateWithTotals(
+            totalSpentThisPeriod: totalBefore + payment,
+            availableToBudget: 2000,
+            savingsTarget: 0,
+            variableSpentSoFar: variableSpent,
+            expectedFixedBillsThisPeriod: 0,
+            unpaidFixedBillsRemainingThisPeriod: unpaidBefore - payment,
+            currentDayOfPeriod: elapsed,
+            periodLengthDays: span
+        )
+
+        XCTAssertEqual(before.projectedMonthEndSpend, after.projectedMonthEndSpend, accuracy: 0.0001)
+    }
+
+    func test_spendingTrend_tooltipArrays_neverReferenceSpendLimit() {
+        for rows in [
+            FinanceCalculator.spendingTrendVariableTooltipRowTitlesPast,
+            FinanceCalculator.spendingTrendVariableTooltipRowTitlesFuture,
+            FinanceCalculator.spendingTrendTotalTooltipRowTitlesPast,
+            FinanceCalculator.spendingTrendTotalTooltipRowTitlesFuture,
+        ] {
+            XCTAssertFalse(rows.contains(where: { $0.localizedCaseInsensitiveContains("Spend Limit") }))
+        }
     }
 }
 
