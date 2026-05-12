@@ -1,0 +1,43 @@
+# Node / npm
+node_modules/
+mobile/node_modules/
+backend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Expo / React Native
+.expo/
+mobile/.expo/
+mobile/.expo-shared/
+mobile/dist/
+mobile/web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro / Babel cache
+.metro-health-check*
+mobile/.metro-health-check*
+
+# macOS
+.DS_Store
+
+# Xcode (keep the project files; ignore user state + build artifacts)
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# IDE
+.idea/
+.vscode/
+
+# Env files
+.env
+.env.local
+.env.*.local

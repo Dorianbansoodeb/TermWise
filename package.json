@@ -1,41 +1,15 @@
 {
-  "name": "student-finance-coop-planner",
+  "name": "termwise-monorepo",
   "private": true,
   "version": "1.0.0",
-  "workspaces": [
-    "backend",
-    "mobile"
-  ],
+  "description": "TermWise repository root. The iOS SwiftUI app lives under TermWise/, the Expo mobile app lives under mobile/, and the Node prototype lives under backend/. Each subproject manages its own dependencies — this root manifest exists only so repo-level tooling sees a valid Node project and so npm scripts can delegate to the right folder.",
   "scripts": {
-    "dev:backend": "npm run dev --workspace backend",
-    "start:mobile": "npm run start --workspace mobile",
-    "build:backend": "npm run build --workspace backend",
-    "typecheck": "npm run lint --workspace backend && npm run typecheck --workspace mobile"
-  }
-}
-{
-  "name": "student-finance-mobile",
-  "version": "1.0.0",
-  "private": true,
-  "main": "node_modules/expo/AppEntry.js",
-  "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "expo": "~51.0.28",
-    "expo-status-bar": "~1.12.1",
-    "react": "18.2.0",
-    "react-native": "0.74.5",
-    "react-native-chart-kit": "^6.12.0",
-    "react-native-safe-area-context": "4.10.5",
-    "react-native-svg": "15.2.0"
-  },
-  "devDependencies": {
-    "@types/react": "~18.2.79",
-    "typescript": "^5.4.5"
+    "mobile:install": "npm --prefix mobile install",
+    "mobile:start": "npm --prefix mobile start",
+    "mobile:ios": "npm --prefix mobile run ios",
+    "mobile:android": "npm --prefix mobile run android",
+    "mobile:typecheck": "npm --prefix mobile run typecheck",
+    "backend:install": "npm --prefix backend install",
+    "backend:dev": "npm --prefix backend run dev"
   }
 }
