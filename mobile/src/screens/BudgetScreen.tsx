@@ -50,7 +50,6 @@ export function BudgetScreen() {
         <BudgetEnvelopeCard
           totalIncome={totalIncome}
           availableToBudget={availableToBudget}
-          savingsTarget={savingsTarget}
           budgetItems={budgetItems}
           onSaveAvailableToBudget={setAvailableToBudget}
         />
@@ -73,8 +72,6 @@ export function BudgetScreen() {
         <MonthlySnapshotCard
           transactions={transactions}
           budgetItems={budgetItems}
-          availableToBudget={availableToBudget}
-          savingsTarget={savingsTarget}
           referenceDate={referenceDate}
         />
 

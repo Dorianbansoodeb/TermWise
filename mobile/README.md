@@ -71,9 +71,10 @@ mobile/
 
 - `totalIncome`, `availableToBudget`, `reserveNotBudgeted`, `totalBudgeted`
   (fixed + variable planned only — **not** savings target dollars),
-  `remainingAfterPlan`, `budgetDifference`, `unallocatedRow`
+  `budgetDifference`, `unallocatedRow`
   (`Unallocated Budget` / `Over Budget By` using
-  `available − totalBudgeted − savingsTarget`).
+  `available − totalBudgeted`). Savings Target is a separate comfort goal and
+  never folds into the envelope difference.
 - `savingsTarget` = explicit override OR `desiredSavingsRate × availableToBudget`.
 - `usableBudgetAfterSavings` = `max(0, available − savings)`.
 - Variable Spending Pace: risk band ≤90% / ≤100% / >100% of variable limit.

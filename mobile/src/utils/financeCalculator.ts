@@ -74,8 +74,9 @@ export function budgetingOverIncomeAmount(
 // MARK: - 2. Budget difference / allocation
 
 /// Planned spending only: **recurring / fixed bills + variable category limits**.
-/// Does **not** include the Savings Target dollar amount — that is reserved
-/// separately from the same `availableToBudget` pool (see `remainingAfterPlan`).
+/// Does **not** include the Savings Target dollar amount — savings are a
+/// comfort goal, not a planned expense, so they have no effect on
+/// `budgetDifference` / Unallocated Budget / Over Budget By.
 export function totalBudgeted(budgetItems: BudgetItem[]): number {
   const recurring = budgetItems
     .filter((b) => b.budgetType === 'fixed')
@@ -86,20 +87,10 @@ export function totalBudgeted(budgetItems: BudgetItem[]): number {
   return recurring + variable;
 }
 
-/// `availableToBudget − totalBudgetedPlanned − savingsTarget`.
-/// Positive = unallocated headroom after planned spending **and** the
-/// envelope savings reservation; negative = over-committed vs available.
-export function remainingAfterPlan(
-  availableToBudget: number,
-  totalBudgetedPlanned: number,
-  savingsTarget: number
-): number {
-  return availableToBudget - totalBudgetedPlanned - Math.max(0, savingsTarget);
-}
-
-/// `availableToBudget − totalBudgeted` where `totalBudgeted` is planned
-/// spending only (fixed + variable). Does **not** subtract savings — prefer
-/// `remainingAfterPlan` for envelope headroom.
+/// `availableToBudget − totalBudgeted`. Positive = unallocated headroom;
+/// negative = over-allocated. Savings Target is intentionally **not** part of
+/// this calculation — see `usableBudgetAfterSavings` for the savings-aware
+/// spend-limit used by charts.
 export function budgetDifference(availableToBudget: number, totalBudgetedPlanned: number): number {
   return availableToBudget - totalBudgetedPlanned;
 }
@@ -110,12 +101,13 @@ export interface UnallocatedRow {
   isOver: boolean;
 }
 
+/// Envelope unallocated / over-budget row driven purely by
+/// `budgetDifference`. Savings Target does not influence this row.
 export function unallocatedRow(
   availableToBudget: number,
-  totalBudgetedPlanned: number,
-  savingsTarget: number
+  totalBudgetedPlanned: number
 ): UnallocatedRow {
-  const diff = remainingAfterPlan(availableToBudget, totalBudgetedPlanned, savingsTarget);
+  const diff = budgetDifference(availableToBudget, totalBudgetedPlanned);
   if (diff >= 0) {
     return { label: 'Unallocated Budget', value: diff, isOver: false };
   }

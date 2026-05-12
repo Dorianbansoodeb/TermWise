@@ -40,7 +40,8 @@ export function SavingsTargetCard({
     <Card>
       <Text style={[styles.title, { color: theme.text }]}>Savings Target</Text>
       <Text style={[styles.helper, { color: theme.textMuted }]}>
-        Money you plan to keep this month before any flexible spending.
+        This is a savings goal, not part of your spending budget. Money you'd like to keep
+        aside if your budget allows.
       </Text>
       <Text style={[styles.amount, { color: theme.text }]}>{formatCurrency(savingsTarget)}</Text>
       <Text style={[styles.subtle, { color: theme.textMuted }]}>

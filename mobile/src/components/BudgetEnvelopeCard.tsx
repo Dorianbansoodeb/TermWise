@@ -7,8 +7,8 @@ import { RADIUS, SPACING } from '../theme/tokens';
 import { formatCurrency } from '../utils/format';
 import {
   availableToBudgetWarning,
+  budgetDifference,
   budgetingOverIncomeAmount,
-  remainingAfterPlan,
   reserveNotBudgeted,
   totalBudgeted,
   unallocatedRow
@@ -18,7 +18,6 @@ import type { BudgetItem } from '../types/models';
 interface BudgetEnvelopeCardProps {
   totalIncome: number;
   availableToBudget: number;
-  savingsTarget: number;
   budgetItems: BudgetItem[];
   onSaveAvailableToBudget: (amount: number) => void;
 }
@@ -26,17 +25,16 @@ interface BudgetEnvelopeCardProps {
 export function BudgetEnvelopeCard({
   totalIncome,
   availableToBudget,
-  savingsTarget,
   budgetItems,
   onSaveAvailableToBudget
 }: BudgetEnvelopeCardProps) {
   const theme = useTheme();
   const totalBudgetedValue = totalBudgeted(budgetItems);
-  const planRemain = remainingAfterPlan(availableToBudget, totalBudgetedValue, savingsTarget);
+  const diff = budgetDifference(availableToBudget, totalBudgetedValue);
   const reserve = reserveNotBudgeted(totalIncome, availableToBudget);
   const overIncome = budgetingOverIncomeAmount(totalIncome, availableToBudget);
   const isOverIncome = overIncome > 0;
-  const row = unallocatedRow(availableToBudget, totalBudgetedValue, savingsTarget);
+  const row = unallocatedRow(availableToBudget, totalBudgetedValue);
 
   const [draft, setDraft] = useState(formatDraft(availableToBudget));
   useEffect(() => {
@@ -107,15 +105,15 @@ export function BudgetEnvelopeCard({
 
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
       <Row label="Total Budgeted" value={formatCurrency(totalBudgetedValue)} />
-      <Row label="Savings Target" value={formatCurrency(savingsTarget)} muted />
       <Row
         label={row.label}
         value={formatCurrency(row.value)}
         tone={row.isOver ? 'danger' : 'positive'}
       />
       <Text style={[styles.helper, { color: theme.textMuted }]}>
-        Difference {formatCurrency(Math.abs(planRemain))}{' '}
-        {planRemain >= 0 ? 'still to allocate' : 'over-allocated'}.
+        Difference {formatCurrency(Math.abs(diff))}{' '}
+        {diff >= 0 ? 'still to allocate' : 'over-allocated'}. Savings Target is shown
+        separately and does not affect this difference.
       </Text>
     </Card>
   );

@@ -9,7 +9,6 @@ import {
   recurringBillsForMonth,
   totalBudgeted,
   totalExpensesThisMonth,
-  unallocatedRow,
   variableSpent
 } from '../utils/financeCalculator';
 import type { BudgetItem, TransactionItem } from '../types/models';
@@ -17,16 +16,12 @@ import type { BudgetItem, TransactionItem } from '../types/models';
 interface MonthlySnapshotCardProps {
   transactions: TransactionItem[];
   budgetItems: BudgetItem[];
-  availableToBudget: number;
-  savingsTarget: number;
   referenceDate: Date;
 }
 
 export function MonthlySnapshotCard({
   transactions,
   budgetItems,
-  availableToBudget,
-  savingsTarget,
   referenceDate
 }: MonthlySnapshotCardProps) {
   const theme = useTheme();
@@ -38,7 +33,11 @@ export function MonthlySnapshotCard({
     [budgetItems, transactions, referenceDate]
   );
   const paidCount = bills.filter((b) => b.status === 'paid').length;
-  const planRow = unallocatedRow(availableToBudget, totalBudgetedValue, savingsTarget);
+  // Snapshot "Remaining Budget / Over Spent" compares actual spending to the
+  // planned budget — Savings Target is intentionally absent so it cannot
+  // skew the difference.
+  const remaining = totalBudgetedValue - actualSpending;
+  const isOverSpent = remaining < 0;
 
   return (
     <Card>
@@ -46,16 +45,14 @@ export function MonthlySnapshotCard({
       <Text style={[styles.subtitle, { color: theme.textMuted }]}>
         At-a-glance totals for this calendar month.
       </Text>
-      <SnapshotRow label="Available to Budget" value={formatCurrency(availableToBudget)} theme={theme} />
       <SnapshotRow label="Total Budgeted" value={formatCurrency(totalBudgetedValue)} theme={theme} />
-      <SnapshotRow label="Savings Target" value={formatCurrency(savingsTarget)} theme={theme} />
       <SnapshotRow label="Actual Spending" value={formatCurrency(actualSpending)} theme={theme} />
       <SnapshotRow
-        label={planRow.label}
-        value={formatCurrency(planRow.value)}
+        label={isOverSpent ? 'Over Spent' : 'Remaining Budget'}
+        value={formatCurrency(Math.abs(remaining))}
         theme={theme}
-        positive={!planRow.isOver}
-        danger={planRow.isOver}
+        positive={!isOverSpent}
+        danger={isOverSpent}
       />
       <SnapshotRow label="Variable Spending Used" value={formatCurrency(varUsed)} theme={theme} />
       <SnapshotRow
