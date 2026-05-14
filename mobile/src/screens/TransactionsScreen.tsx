@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
@@ -11,6 +11,7 @@ import {
   type TransactionFilter
 } from '../utils/financeCalculator';
 import { TransactionGroupList } from '../components/TransactionGroupList';
+import { contentBottomPaddingForTabs } from '../navigation/constants';
 
 const FILTERS: { value: TransactionFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -20,6 +21,7 @@ const FILTERS: { value: TransactionFilter; label: string }[] = [
 
 export function TransactionsScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { transactions, removeTransaction } = useAppState();
   const [filter, setFilter] = useState<TransactionFilter>('all');
 
@@ -30,7 +32,12 @@ export function TransactionsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: contentBottomPaddingForTabs(insets.bottom) }
+        ]}
+      >
         <Text style={[styles.title, { color: theme.text }]}>Transactions</Text>
         <Text style={[styles.subtitle, { color: theme.textMuted }]}>
           Swipe left on a row to delete. Undo is available for 5 seconds.

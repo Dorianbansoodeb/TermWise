@@ -4,10 +4,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
-import { TAB_BAR_HEIGHT } from '../navigation/constants';
+import { bottomNavReservedHeight } from '../navigation/constants';
 
-/// Auto-dismissing undo snackbar. Lives above the custom bottom tab so it
-/// doesn't get hidden behind the FAB / pill nav (parity with iOS).
+/// Auto-dismissing undo snackbar. Sits above the pill + FAB row using
+/// `bottomNavReservedHeight` so it clears the taller 78pt pill and the safe-area gap.
 export function UndoSnackbar() {
   const { pendingUndoBar, dismissUndoBar } = useAppState();
   const theme = useTheme();
@@ -18,7 +18,7 @@ export function UndoSnackbar() {
       pointerEvents="box-none"
       style={[
         styles.wrapper,
-        { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + SPACING.md }
+        { paddingBottom: bottomNavReservedHeight(insets.bottom) + SPACING.md }
       ]}
     >
       <View

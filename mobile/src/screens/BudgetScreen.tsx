@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { SPACING } from '../theme/tokens';
+import { contentBottomPaddingForTabs } from '../navigation/constants';
 import {
   recurringBillsForMonth,
   totalIncomeThisMonth,
@@ -21,6 +22,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 
 export function BudgetScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const {
     transactions,
     budgetItems,
@@ -49,7 +51,13 @@ export function BudgetScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: contentBottomPaddingForTabs(insets.bottom) }
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={[styles.title, { color: theme.text }]}>Budget Plan</Text>
 
         <BudgetEnvelopeCard
@@ -163,8 +171,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: SPACING.lg,
-    gap: SPACING.lg,
-    paddingBottom: SPACING.xxl * 2
+    gap: SPACING.lg
   },
   title: {
     fontSize: 26,

@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
 import { useAppState } from '../state/AppState';
 import { RADIUS, SPACING } from '../theme/tokens';
+import { contentBottomPaddingForTabs } from '../navigation/constants';
 import {
   computeSpendingBreakdown,
   evaluateTotalPace,
@@ -24,6 +25,7 @@ import { formatCurrency } from '../utils/format';
 
 export function DashboardScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const {
     transactions,
     budgetItems,
@@ -97,7 +99,13 @@ export function DashboardScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: contentBottomPaddingForTabs(insets.bottom) }
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.headerRow}>
           <View>
             <Text style={[styles.greeting, { color: theme.textMuted }]}>This month</Text>

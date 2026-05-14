@@ -1,19 +1,27 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
+import { contentBottomPaddingForTabs } from '../navigation/constants';
 import { Card } from '../components/Card';
 import { PillBadge } from '../components/PillBadge';
 
 export function ProfileScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { monthlyNote, setMonthlyNote } = useAppState();
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: contentBottomPaddingForTabs(insets.bottom) }
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={[styles.title, { color: theme.text }]}>Profile</Text>
         <Text style={[styles.subtitle, { color: theme.textMuted }]}>
           Monthly note and app settings. Budget planning lives on the Budget tab.
@@ -85,8 +93,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: SPACING.lg,
-    gap: SPACING.lg,
-    paddingBottom: SPACING.xxl * 2
+    gap: SPACING.lg
   },
   title: {
     fontSize: 26,

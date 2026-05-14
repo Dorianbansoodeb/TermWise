@@ -2,8 +2,17 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
-import { RADIUS, SPACING } from '../theme/tokens';
-import { TAB_BAR_HEIGHT, type TabRoute } from './constants';
+import { SPACING } from '../theme/tokens';
+import {
+  BOTTOM_NAV_BOTTOM_GAP,
+  BOTTOM_NAV_HORIZONTAL_INSET,
+  FAB_QUICK_ADD_MARGIN_LEFT,
+  FAB_QUICK_ADD_SIZE,
+  PILL_TAB_BAR_BORDER_RADIUS,
+  PILL_TAB_BAR_HEIGHT,
+  PILL_TAB_MARGIN_RIGHT,
+  type TabRoute
+} from './constants';
 
 interface TabBarProps {
   active: TabRoute;
@@ -18,13 +27,23 @@ const ITEMS: { route: TabRoute; label: string; icon: string }[] = [
   { route: 'Profile', label: 'Profile', icon: '\u263A' }
 ];
 
-/// Custom pill-shaped bottom nav with an orange circular Quick Add FAB above.
-/// Matches the SwiftUI `CustomBottomNav` + floating action button design.
+/// Bottom navigation: left = pill with four tabs only; right = separate orange
+/// Quick Add FAB. The FAB is never a child of the pill so it cannot overlap Profile.
 export function TabBar({ active, onSelect, onQuickAdd }: TabBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+
   return (
-    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, SPACING.sm) }]}>
+    <View
+      style={[
+        styles.bottomNavWrapper,
+        {
+          left: BOTTOM_NAV_HORIZONTAL_INSET,
+          right: BOTTOM_NAV_HORIZONTAL_INSET,
+          bottom: insets.bottom + BOTTOM_NAV_BOTTOM_GAP
+        }
+      ]}
+    >
       <View
         style={[
           styles.pill,
@@ -77,7 +96,8 @@ export function TabBar({ active, onSelect, onQuickAdd }: TabBarProps) {
           {
             backgroundColor: theme.primary,
             shadowColor: theme.text,
-            opacity: pressed ? 0.85 : 1
+            opacity: pressed ? 0.85 : 1,
+            marginLeft: FAB_QUICK_ADD_MARGIN_LEFT
           }
         ]}
       >
@@ -88,31 +108,33 @@ export function TabBar({ active, onSelect, onQuickAdd }: TabBarProps) {
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    alignItems: 'center'
+  bottomNavWrapper: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
   },
   pill: {
+    flex: 1,
     flexDirection: 'row',
-    height: TAB_BAR_HEIGHT,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    width: '100%',
+    height: PILL_TAB_BAR_HEIGHT,
+    borderRadius: PILL_TAB_BAR_BORDER_RADIUS,
+    marginRight: PILL_TAB_MARGIN_RIGHT,
+    paddingHorizontal: 8,
     alignItems: 'center',
+    justifyContent: 'space-around',
+    borderWidth: StyleSheet.hairlineWidth,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.08,
     shadowRadius: 12,
-    elevation: 6
+    elevation: 8
   },
   item: {
     flex: 1,
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADIUS.pill,
+    borderRadius: PILL_TAB_BAR_BORDER_RADIUS / 2,
     paddingHorizontal: SPACING.xs
   },
   icon: {
@@ -124,22 +146,20 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   fab: {
-    position: 'absolute',
-    top: -28,
-    right: SPACING.lg,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: FAB_QUICK_ADD_SIZE,
+    height: FAB_QUICK_ADD_SIZE,
+    borderRadius: FAB_QUICK_ADD_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 6
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 10
   },
   fabPlus: {
-    fontSize: 28,
-    lineHeight: 30,
+    fontSize: 34,
+    lineHeight: 36,
     fontWeight: '600'
   }
 });

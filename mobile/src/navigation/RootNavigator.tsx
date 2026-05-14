@@ -15,7 +15,7 @@ import { QuickAddScreen } from '../screens/QuickAddScreen';
 import { IncomePromptDialog } from '../components/IncomePromptDialog';
 import { UndoSnackbar } from '../components/UndoSnackbar';
 import { TabBar } from './TabBar';
-import { TAB_BAR_HEIGHT, type RootStackParamList, type TabRoute } from './constants';
+import type { RootStackParamList, TabRoute } from './constants';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 
@@ -67,7 +67,7 @@ function TabsRoot({ navigation }: TabsRootProps) {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <View style={[styles.body, { paddingBottom: TAB_BAR_HEIGHT + 24 }]}>
+      <View style={styles.body}>
         {active === 'Dashboard' && <DashboardScreen />}
         {active === 'Transactions' && <TransactionsScreen />}
         {active === 'Budget' && <BudgetScreen />}
@@ -94,9 +94,7 @@ const styles = StyleSheet.create({
     flex: 1
   },
   tabHost: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0
+    ...StyleSheet.absoluteFillObject,
+    pointerEvents: 'box-none'
   }
 });
