@@ -13,7 +13,7 @@ export type RootStackParamList = {
 // tab screen scroll clearance.
 
 export const BOTTOM_NAV_HORIZONTAL_INSET = 20;
-export const BOTTOM_NAV_BOTTOM_GAP = 12;
+export const BOTTOM_NAV_BOTTOM_GAP = 0;
 export const PILL_TAB_BAR_HEIGHT = 78;
 export const PILL_TAB_BAR_BORDER_RADIUS = 39;
 export const PILL_TAB_MARGIN_RIGHT = 14;
