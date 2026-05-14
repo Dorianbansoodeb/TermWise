@@ -1,8 +1,7 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
-import { SPACING } from '../theme/tokens';
 import {
   BOTTOM_NAV_BOTTOM_GAP,
   BOTTOM_NAV_HORIZONTAL_INSET,
@@ -22,13 +21,14 @@ interface TabBarProps {
 
 const ITEMS: { route: TabRoute; label: string; icon: string }[] = [
   { route: 'Dashboard', label: 'Home', icon: '\u2302' },
-  { route: 'Transactions', label: 'Txns', icon: '\u2630' },
+  { route: 'Transactions', label: 'Transactions', icon: '\u2630' },
   { route: 'Budget', label: 'Budget', icon: '\u25BC' },
   { route: 'Profile', label: 'Profile', icon: '\u263A' }
 ];
 
-/// Bottom navigation: left = pill with four tabs only; right = separate orange
-/// Quick Add FAB. The FAB is never a child of the pill so it cannot overlap Profile.
+/// SwiftUI-style bottom nav: wide pill with padded tab cells, rounded capsule
+/// highlight on the selected tab (icon + label orange), inactive tabs gray.
+/// Orange Quick Add FAB sits outside the pill with a clear gap — no overlap.
 export function TabBar({ active, onSelect, onQuickAdd }: TabBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -60,29 +60,42 @@ export function TabBar({ active, onSelect, onQuickAdd }: TabBarProps) {
             <Pressable
               key={item.route}
               onPress={() => onSelect(item.route)}
-              hitSlop={4}
-              style={[styles.item, isActive && { backgroundColor: theme.surfaceMuted }]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              style={styles.tabPressable}
             >
-              <Text
+              <View
                 style={[
-                  styles.icon,
-                  { color: isActive ? theme.primary : theme.textMuted }
-                ]}
-              >
-                {item.icon}
-              </Text>
-              <Text
-                style={[
-                  styles.label,
-                  {
-                    color: isActive ? theme.text : theme.textMuted,
-                    fontWeight: isActive ? '700' : '500'
+                  styles.tabInner,
+                  isActive && {
+                    backgroundColor: theme.surfaceMuted,
+                    ...styles.tabInnerActive
                   }
                 ]}
-                numberOfLines={1}
               >
-                {item.label}
-              </Text>
+                <Text
+                  style={[
+                    styles.tabIcon,
+                    { color: isActive ? theme.primary : theme.textMuted }
+                  ]}
+                >
+                  {item.icon}
+                </Text>
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    {
+                      color: isActive ? theme.primary : theme.textMuted,
+                      fontWeight: isActive ? '700' : '500'
+                    }
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit={Platform.OS === 'ios'}
+                  minimumFontScale={0.82}
+                >
+                  {item.label}
+                </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -120,30 +133,49 @@ const styles = StyleSheet.create({
     height: PILL_TAB_BAR_HEIGHT,
     borderRadius: PILL_TAB_BAR_BORDER_RADIUS,
     marginRight: PILL_TAB_MARGIN_RIGHT,
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'space-around',
     borderWidth: StyleSheet.hairlineWidth,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    minWidth: 0,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
     elevation: 8
   },
-  item: {
+  tabPressable: {
     flex: 1,
+    minWidth: 0,
     height: '100%',
     alignItems: 'center',
+    justifyContent: 'center'
+  },
+  tabInner: {
+    width: '100%',
+    maxWidth: '100%',
+    alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: PILL_TAB_BAR_BORDER_RADIUS / 2,
-    paddingHorizontal: SPACING.xs
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 32
   },
-  icon: {
-    fontSize: 18,
-    lineHeight: 20
+  tabInnerActive: {
+    minHeight: 58,
+    minWidth: 72,
+    paddingVertical: 8,
+    paddingHorizontal: 8
   },
-  label: {
-    fontSize: 10,
-    marginTop: 2
+  tabIcon: {
+    fontSize: 20,
+    lineHeight: 22,
+    textAlign: 'center'
+  },
+  tabLabel: {
+    fontSize: 11,
+    marginTop: 4,
+    textAlign: 'center',
+    letterSpacing: -0.15
   },
   fab: {
     width: FAB_QUICK_ADD_SIZE,
@@ -158,8 +190,8 @@ const styles = StyleSheet.create({
     elevation: 10
   },
   fabPlus: {
-    fontSize: 34,
-    lineHeight: 36,
+    fontSize: 32,
+    lineHeight: 34,
     fontWeight: '600'
   }
 });
