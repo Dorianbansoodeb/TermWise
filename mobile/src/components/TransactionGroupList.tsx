@@ -1,5 +1,6 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useRef } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { RectButton, Swipeable } from 'react-native-gesture-handler';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
 import type { TransactionGroup } from '../utils/financeCalculator';
@@ -14,8 +15,14 @@ interface TransactionGroupListProps {
   onRemove?: (transaction: TransactionItem) => void;
 }
 
+/// Grouped day sections for the Transactions screen and Dashboard "Recent"
+/// list. Each row is wrapped in a `Swipeable` so the user can swipe left to
+/// reveal Delete — same undo snackbar flow as `removeTransaction(..., {
+/// withUndo: true })` from the parent.
 export function TransactionGroupList({ groups, onRemove }: TransactionGroupListProps) {
   const theme = useTheme();
+  const rowRefs = useRef<Map<string, Swipeable>>(new Map());
+
   if (groups.length === 0) {
     return (
       <Text style={[styles.empty, { color: theme.textMuted }]}>
@@ -46,10 +53,9 @@ export function TransactionGroupList({ groups, onRemove }: TransactionGroupListP
                 t.type === 'expense'
                   ? `-${formatCurrency(netExpenseAmount(t), { compact: true })}`
                   : `+${formatCurrency(t.amount, { compact: true })}`;
-              return (
-                <Pressable
-                  key={t.id}
-                  onLongPress={() => onRemove?.(t)}
+
+              const row = (
+                <View
                   style={[
                     styles.txnRow,
                     idx > 0 && {
@@ -74,7 +80,42 @@ export function TransactionGroupList({ groups, onRemove }: TransactionGroupListP
                   >
                     {value}
                   </Text>
-                </Pressable>
+                </View>
+              );
+
+              if (!onRemove) {
+                return (
+                  <View key={t.id}>
+                    {row}
+                  </View>
+                );
+              }
+
+              return (
+                <Swipeable
+                  key={t.id}
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(t.id, el);
+                    else rowRefs.current.delete(t.id);
+                  }}
+                  friction={2}
+                  overshootRight={false}
+                  renderRightActions={() => (
+                    <RectButton
+                      style={[styles.deleteAction, { backgroundColor: theme.danger }]}
+                      onPress={() => onRemove(t)}
+                    >
+                      <Text style={[styles.deleteLabel, { color: theme.textInverse }]}>Delete</Text>
+                    </RectButton>
+                  )}
+                  onSwipeableWillOpen={() => {
+                    rowRefs.current.forEach((sw, id) => {
+                      if (id !== t.id) sw.close();
+                    });
+                  }}
+                >
+                  {row}
+                </Swipeable>
               );
             })}
           </View>
@@ -118,7 +159,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm
+    paddingVertical: SPACING.sm,
+    backgroundColor: 'transparent'
   },
   dot: {
     width: 10,
@@ -139,6 +181,17 @@ const styles = StyleSheet.create({
   },
   txnAmount: {
     fontSize: 14,
+    fontWeight: '700'
+  },
+  deleteAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+    alignSelf: 'stretch',
+    minHeight: 48
+  },
+  deleteLabel: {
+    fontSize: 13,
     fontWeight: '700'
   }
 });

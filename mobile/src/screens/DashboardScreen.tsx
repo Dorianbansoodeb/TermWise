@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/useTheme';
 import { useAppState } from '../state/AppState';
@@ -190,6 +191,9 @@ export function DashboardScreen() {
 
         <View>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Transactions</Text>
+          <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
+            Swipe left on a row to delete. Undo is available for 5 seconds.
+          </Text>
           <TransactionGroupList
             groups={recentGroups}
             onRemove={(txn) => removeTransaction(txn.id, { withUndo: true })}
@@ -261,6 +265,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
-    marginBottom: SPACING.sm
+    marginBottom: 4
+  },
+  sectionHint: {
+    fontSize: 12,
+    marginBottom: SPACING.sm,
+    lineHeight: 16
   }
 });

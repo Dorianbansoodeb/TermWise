@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
@@ -32,7 +33,7 @@ export function TransactionsScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={[styles.title, { color: theme.text }]}>Transactions</Text>
         <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-          Long-press a row to remove it. Undo is available for 5 seconds.
+          Swipe left on a row to delete. Undo is available for 5 seconds.
         </Text>
         <View style={[styles.filterRow, { backgroundColor: theme.surfaceMuted }]}>
           {FILTERS.map((f) => {
