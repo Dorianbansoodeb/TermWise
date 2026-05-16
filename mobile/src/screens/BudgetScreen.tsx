@@ -13,6 +13,7 @@ import {
 import { BudgetEnvelopeCard } from '../components/BudgetEnvelopeCard';
 import { SavingsTargetCard } from '../components/SavingsTargetCard';
 import { MonthlySnapshotCard } from '../components/MonthlySnapshotCard';
+import { BudgetPlanningPieCard } from '../components/BudgetPlanningPieCard';
 import { Card } from '../components/Card';
 import { BillRow } from '../components/BillRow';
 import { EditRecurringBillSheet } from '../components/EditRecurringBillSheet';
@@ -85,6 +86,12 @@ export function BudgetScreen() {
         <MonthlySnapshotCard
           transactions={transactions}
           budgetItems={budgetItems}
+          referenceDate={referenceDate}
+        />
+
+        <BudgetPlanningPieCard
+          budgetItems={budgetItems}
+          availableToBudget={availableToBudget}
           referenceDate={referenceDate}
         />
 
