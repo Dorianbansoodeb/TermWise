@@ -7,6 +7,7 @@ export type TabRoute = (typeof TAB_ROUTES)[number];
 export type RootStackParamList = {
   Tabs: undefined;
   QuickAdd: undefined;
+  Settings: undefined;
 };
 
 // Bottom nav layout (pill + separate FAB). Used by TabBar, UndoSnackbar, and

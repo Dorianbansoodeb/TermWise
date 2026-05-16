@@ -4,6 +4,8 @@
 
 const TWO = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
 
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 export function monthKey(date: Date): string {
   return `${date.getFullYear()}-${TWO(date.getMonth() + 1)}`;
 }
@@ -40,6 +42,31 @@ export function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
 }
 
+export function addMonths(date: Date, delta: number): Date {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + delta);
+  return next;
+}
+
+/// `monthKey` → first day of that month (for labels / modals).
+export function parseMonthKey(key: string): Date {
+  const parts = key.split('-');
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) {
+    return new Date();
+  }
+  return new Date(y, m - 1, 1, 0, 0, 0, 0);
+}
+
+export function shortMonthLabel(date: Date): string {
+  return MONTH_LABELS[date.getMonth()] ?? '';
+}
+
+export function monthYearLabel(date: Date): string {
+  return `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 export function dayKey(date: Date): string {
   return `${date.getFullYear()}-${TWO(date.getMonth() + 1)}-${TWO(date.getDate())}`;
 }
@@ -47,8 +74,6 @@ export function dayKey(date: Date): string {
 export function parseDate(value: string | Date): Date {
   return value instanceof Date ? value : new Date(value);
 }
-
-const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /// "Today", "Yesterday", or "Mon, May 12" — same vibe as iOS dashboard grouping.
 export function relativeDayLabel(date: Date, now: Date = new Date()): string {

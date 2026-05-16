@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card } from './Card';
 import { PrimaryButton } from './PrimaryButton';
+import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
-import { formatCurrency, formatPercent } from '../utils/format';
+import { formatPercent } from '../utils/format';
 
 const RATE_OPTIONS = [0.05, 0.1, 0.15, 0.2, 0.25];
 
@@ -28,6 +29,7 @@ export function SavingsTargetCard({
   onClearCustomTarget
 }: SavingsTargetCardProps) {
   const theme = useTheme();
+  const { formatMoney } = useAppState();
   const ratio =
     availableToBudget > 0 ? Math.min(1, Math.max(0, savingsTarget / availableToBudget)) : 0;
 
@@ -43,9 +45,9 @@ export function SavingsTargetCard({
         This is a savings goal, not part of your spending budget. Money you'd like to keep
         aside if your budget allows.
       </Text>
-      <Text style={[styles.amount, { color: theme.text }]}>{formatCurrency(savingsTarget)}</Text>
+      <Text style={[styles.amount, { color: theme.text }]}>{formatMoney(savingsTarget)}</Text>
       <Text style={[styles.subtle, { color: theme.textMuted }]}>
-        {formatPercent(ratio, 0)} of {formatCurrency(availableToBudget)} available
+        {formatPercent(ratio, 0)} of {formatMoney(availableToBudget)} available
         {' '}({formatPercent(desiredSavingsRate, 0)} default rate)
       </Text>
 

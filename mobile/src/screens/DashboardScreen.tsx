@@ -21,7 +21,6 @@ import { SpendTrendChart } from '../components/SpendTrendChart';
 import { SpendTrendRangePicker } from '../components/SpendTrendRangePicker';
 import { TransactionGroupList } from '../components/TransactionGroupList';
 import { buildChartSeries } from '../utils/chartCalculator';
-import { formatCurrency } from '../utils/format';
 
 export function DashboardScreen() {
   const theme = useTheme();
@@ -37,7 +36,8 @@ export function DashboardScreen() {
     setChartMode,
     setVariableChartRange,
     referenceDate,
-    removeTransaction
+    removeTransaction,
+    formatMoney
   } = useAppState();
 
   const ctx = monthContext(referenceDate);
@@ -110,10 +110,10 @@ export function DashboardScreen() {
           <View>
             <Text style={[styles.greeting, { color: theme.textMuted }]}>This month</Text>
             <Text style={[styles.income, { color: theme.text }]}>
-              {formatCurrency(totalIncome)}
+              {formatMoney(totalIncome)}
             </Text>
             <Text style={[styles.subtle, { color: theme.textMuted }]}>
-              Available to Budget {formatCurrency(availableToBudget)}
+              Available to Budget {formatMoney(availableToBudget)}
             </Text>
           </View>
           <PillBadge
@@ -153,6 +153,8 @@ export function DashboardScreen() {
               </Text>
             </View>
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Switch between variable and total spending trend"
               onPress={() => setChartMode(chartMode === 'variable' ? 'total' : 'variable')}
               style={({ pressed }) => [
                 styles.swap,
@@ -163,9 +165,14 @@ export function DashboardScreen() {
                 }
               ]}
             >
-              <Text style={[styles.swapLabel, { color: theme.text }]}>
-                {chartMode === 'variable' ? 'Total \u21C4' : 'Variable \u21C4'}
-              </Text>
+              <View style={styles.swapArrows}>
+                <Text style={[styles.swapArrowChar, styles.swapArrowTop, { color: theme.text }]}>
+                  →
+                </Text>
+                <Text style={[styles.swapArrowChar, styles.swapArrowBottom, { color: theme.text }]}>
+                  ←
+                </Text>
+              </View>
             </Pressable>
           </View>
 
@@ -183,14 +190,14 @@ export function DashboardScreen() {
           <Text style={[styles.statusMessage, { color: theme.textMuted }]}>
             {chartMode === 'variable'
               ? variablePace.status === 'overBudgetRisk'
-                ? `Projected to spend ${formatCurrency(variablePace.projectedMonthEndSpend, { compact: true })} on flexible categories — over your ${formatCurrency(variablePace.variableBudget, { compact: true })} limit.`
+                ? `Projected to spend ${formatMoney(variablePace.projectedMonthEndSpend, { compact: true })} on flexible categories — over your ${formatMoney(variablePace.variableBudget, { compact: true })} limit.`
                 : variablePace.status === 'watch'
                   ? 'Pace is close to your variable limit — watch coffee + eating out.'
                   : 'Variable spending is within pace.'
               : totalPace.status === 'overBudget'
-                ? `Projected to exceed your monthly budget by ${formatCurrency(totalPace.projectedOverAvailableByAmount, { compact: true })} across all expenses.`
+                ? `Projected to exceed your monthly budget by ${formatMoney(totalPace.projectedOverAvailableByAmount, { compact: true })} across all expenses.`
                 : totalPace.status === 'nearLimit'
-                  ? `Projected to use money reserved for savings by ${formatCurrency(totalPace.projectedOverBudgetByAmount, { compact: true })}.`
+                  ? `Projected to use money reserved for savings by ${formatMoney(totalPace.projectedOverBudgetByAmount, { compact: true })}.`
                   : 'Projected spending is within your savings-protected limit.'}
           </Text>
         </Card>
@@ -256,14 +263,31 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   swap: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
     borderRadius: RADIUS.pill,
-    borderWidth: StyleSheet.hairlineWidth
+    borderWidth: StyleSheet.hairlineWidth,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  swapLabel: {
+  swapArrows: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  swapArrowChar: {
     fontSize: 11,
-    fontWeight: '600'
+    lineHeight: 12,
+    fontWeight: '800',
+    includeFontPadding: false,
+    textAlign: 'center'
+  },
+  swapArrowTop: {
+    marginBottom: -2
+  },
+  swapArrowBottom: {
+    marginTop: -2
   },
   statusMessage: {
     fontSize: 12,

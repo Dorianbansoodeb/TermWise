@@ -1,18 +1,27 @@
-const FORMATTER = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 2
-});
+import type { SupportedCurrency } from '../types/models';
 
-const COMPACT = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0
-});
+function makeFormatter(currency: SupportedCurrency, compact: boolean): Intl.NumberFormat {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: compact ? 0 : 2
+  });
+}
 
+export function formatCurrencyWith(
+  value: number,
+  currency: SupportedCurrency,
+  opts: { compact?: boolean } = {}
+): string {
+  if (!Number.isFinite(value)) {
+    return makeFormatter(currency, !!opts.compact).format(0);
+  }
+  return makeFormatter(currency, !!opts.compact).format(value);
+}
+
+/** @deprecated Prefer `useAppState().formatMoney` so display respects Settings → default currency. */
 export function formatCurrency(value: number, opts: { compact?: boolean } = {}): string {
-  if (!Number.isFinite(value)) return '$0';
-  return (opts.compact ? COMPACT : FORMATTER).format(value);
+  return formatCurrencyWith(value, 'USD', opts);
 }
 
 export function formatPercent(value: number, fractionDigits = 0): string {

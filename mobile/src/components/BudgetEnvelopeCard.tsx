@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card } from './Card';
 import { PrimaryButton } from './PrimaryButton';
+import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
-import { formatCurrency } from '../utils/format';
 import {
   availableToBudgetWarning,
   budgetDifference,
@@ -29,6 +29,7 @@ export function BudgetEnvelopeCard({
   onSaveAvailableToBudget
 }: BudgetEnvelopeCardProps) {
   const theme = useTheme();
+  const { formatMoney } = useAppState();
   const totalBudgetedValue = totalBudgeted(budgetItems);
   const diff = budgetDifference(availableToBudget, totalBudgetedValue);
   const reserve = reserveNotBudgeted(totalIncome, availableToBudget);
@@ -67,7 +68,7 @@ export function BudgetEnvelopeCard({
         How your income flows through the budget this month.
       </Text>
 
-      <Row label="Total Income" value={formatCurrency(totalIncome)} muted />
+      <Row label="Total Income" value={formatMoney(totalIncome)} muted />
 
       <Text style={[styles.editorLabel, { color: theme.textMuted }]}>Available to Budget</Text>
       <Text style={[styles.editorHelper, { color: theme.textMuted }]}>
@@ -96,22 +97,22 @@ export function BudgetEnvelopeCard({
       {isOverIncome ? (
         <Row
           label="Budgeting Over Income"
-          value={formatCurrency(overIncome)}
+          value={formatMoney(overIncome)}
           tone="danger"
         />
       ) : (
-        <Row label="Reserve / Not Budgeted" value={formatCurrency(reserve)} muted />
+        <Row label="Reserve / Not Budgeted" value={formatMoney(reserve)} muted />
       )}
 
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
-      <Row label="Total Budgeted" value={formatCurrency(totalBudgetedValue)} />
+      <Row label="Total Budgeted" value={formatMoney(totalBudgetedValue)} />
       <Row
         label={row.label}
-        value={formatCurrency(row.value)}
+        value={formatMoney(row.value)}
         tone={row.isOver ? 'danger' : 'positive'}
       />
       <Text style={[styles.helper, { color: theme.textMuted }]}>
-        Difference {formatCurrency(Math.abs(diff))}{' '}
+        Difference {formatMoney(Math.abs(diff))}{' '}
         {diff >= 0 ? 'still to allocate' : 'over-allocated'}. Savings Target is shown
         separately and does not affect this difference.
       </Text>

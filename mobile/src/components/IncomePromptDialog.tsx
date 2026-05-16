@@ -3,12 +3,11 @@ import { Modal, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from './PrimaryButton';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
-import { formatCurrency } from '../utils/format';
 import { useAppState } from '../state/AppState';
 
 export function IncomePromptDialog() {
   const theme = useTheme();
-  const { pendingIncomePrompt, resolveIncomePrompt } = useAppState();
+  const { pendingIncomePrompt, resolveIncomePrompt, formatMoney } = useAppState();
   if (!pendingIncomePrompt) return null;
 
   return (
@@ -17,7 +16,7 @@ export function IncomePromptDialog() {
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.title, { color: theme.text }]}>Add this income to your budget?</Text>
           <Text style={[styles.body, { color: theme.textMuted }]}>
-            You recorded {formatCurrency(pendingIncomePrompt.amount)} as{' '}
+            You recorded {formatMoney(pendingIncomePrompt.amount)} as{' '}
             {pendingIncomePrompt.categoryName}. Choose how it should affect this month's
             Available to Budget. Tap Cancel to undo the income entry.
           </Text>

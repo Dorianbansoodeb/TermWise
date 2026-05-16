@@ -4,7 +4,10 @@ import {
   actualPaidForBill,
   actualSpentForCategory,
   budgetDifference,
+  budgetPercentUsed,
   findFixedBillForCategory,
+  profileExpenseBreakdownRows,
+  profileMonthSummaries,
   recurringBillsForMonth,
   totalBudgeted,
   unallocatedRow,
@@ -358,5 +361,55 @@ describe('findFixedBillForCategory', () => {
     expect(findFixedBillForCategory('Coffee', budgetItems)).toBeUndefined();
     expect(findFixedBillForCategory('Mystery', budgetItems)).toBeUndefined();
     expect(findFixedBillForCategory('', budgetItems)).toBeUndefined();
+  });
+});
+
+describe('profileMonthSummaries', () => {
+  it('returns count months oldest-first with shared planned from current budget', () => {
+    const ref = new Date(2026, 4, 15, 12, 0, 0, 0);
+    const items = [mk('1', 'Rent', 100, 'fixed')];
+    const txns = [mkExpense('a', 'Rent', 40, new Date(2026, 3, 10, 12, 0, 0).toISOString())];
+    const s = profileMonthSummaries(txns, items, ref, 3);
+    expect(s).toHaveLength(3);
+    expect(s.map((x) => x.monthKey)).toEqual(['2026-03', '2026-04', '2026-05']);
+    expect(s[1].actual).toBe(40);
+    expect(s[0].actual).toBe(0);
+    expect(s[2].actual).toBe(0);
+    expect(s.every((x) => x.planned === 100)).toBe(true);
+    expect(s[1].saved).toBe(60);
+  });
+});
+
+describe('budgetPercentUsed', () => {
+  it('handles zero planned', () => {
+    expect(budgetPercentUsed(0, 0)).toBe(0);
+    expect(budgetPercentUsed(50, 0)).toBe(100);
+  });
+
+  it('is actual / planned × 100', () => {
+    expect(budgetPercentUsed(50, 100)).toBe(50);
+  });
+});
+
+describe('profileExpenseBreakdownRows', () => {
+  it('allocates expected by budget mix and scales actual with month ratio', () => {
+    const items = [mk('a', 'Rent', 60, 'fixed'), mk('b', 'Groceries', 40, 'variable')];
+    const rows = profileExpenseBreakdownRows(items, 100, 50);
+    expect(rows).toHaveLength(2);
+    const rent = rows.find((r) => r.category === 'Rent')!;
+    const groc = rows.find((r) => r.category === 'Groceries')!;
+    expect(rent.expected).toBeCloseTo(60);
+    expect(groc.expected).toBeCloseTo(40);
+    expect(rent.actual).toBeCloseTo(30);
+    expect(groc.actual).toBeCloseTo(20);
+    expect(rows.reduce((sum, r) => sum + r.expected, 0)).toBeCloseTo(100);
+    expect(rows.reduce((sum, r) => sum + r.actual, 0)).toBeCloseTo(50);
+  });
+
+  it('skips savings budget rows', () => {
+    const items = [mk('a', 'Rent', 100, 'fixed'), mk('s', 'Save', 200, 'savings')];
+    const rows = profileExpenseBreakdownRows(items, 100, 80);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].category).toBe('Rent');
   });
 });

@@ -43,6 +43,8 @@ export interface BudgetItem {
   dueWeekday?: number;
   /** ISO 8601 for one-off / scheduled bills. */
   dueDate?: string;
+  /** Optional user note (add flow / future edit). */
+  memo?: string;
   /** Savings goals only: total target amount. */
   targetAmount?: number;
   /** Savings goals only: optional deadline (ISO 8601). */
@@ -108,9 +110,37 @@ export interface SpendingCategory {
 
 /// Chart range presets — variable mode supports the full set; total mode
 /// renders `month` only (matches the SwiftUI behavior).
-export type ChartRange = 'sevenDays' | 'oneWeek' | 'thirtyDays' | 'currentMonth';
+export type ChartRange = 'sevenDays' | 'thirtyDays' | 'currentMonth';
 
 export type ChartMode = 'variable' | 'total';
+
+export type ThemePreference = 'system' | 'light' | 'dark';
+
+export type SupportedCurrency = 'CAD' | 'USD' | 'EUR' | 'GBP';
+
+export type BudgetWarningThresholdPercent = 75 | 90 | 100;
+
+/// Local app preferences (Settings). Persisted with `PersistedState`.
+export interface AppUserSettings {
+  themePreference: ThemePreference;
+  defaultCurrency: SupportedCurrency;
+  /** Calendar day 1–28; only `1` is honored by budget logic today — see TODO in Settings UI. */
+  monthStartDay: number;
+  budgetWarningThresholdPercent: BudgetWarningThresholdPercent;
+  billDueRemindersEnabled: boolean;
+  budgetWarningRemindersEnabled: boolean;
+  weeklySpendingSummaryEnabled: boolean;
+}
+
+export const DEFAULT_APP_USER_SETTINGS: AppUserSettings = {
+  themePreference: 'system',
+  defaultCurrency: 'USD',
+  monthStartDay: 1,
+  budgetWarningThresholdPercent: 90,
+  billDueRemindersEnabled: false,
+  budgetWarningRemindersEnabled: false,
+  weeklySpendingSummaryEnabled: false
+};
 
 /// Reply to "Add this income to your budget?".
 export type IncomePromptChoice = 'addToBudget' | 'keepAsReserve' | 'cancel';
@@ -143,4 +173,5 @@ export interface PersistedState {
   monthlyNotes: Record<string, string>;
   chartMode: ChartMode;
   variableChartRange: ChartRange;
+  appUserSettings: AppUserSettings;
 }

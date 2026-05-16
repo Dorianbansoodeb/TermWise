@@ -10,7 +10,7 @@ import type {
   RecurringBill,
   TransactionItem
 } from '../types/models';
-import { isSameMonth, parseDate, startOfMonth } from './date';
+import { addMonths, isSameMonth, monthKey, parseDate, shortMonthLabel, startOfMonth } from './date';
 import { isVariableTransactionCategory } from './categories';
 
 const DEFAULT_SAVINGS_RATE = 0.15;
@@ -612,4 +612,73 @@ export function monthContext(referenceDate: Date): MonthContext {
     daysInMonth: new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0).getDate(),
     monthStart: startOfMonth(referenceDate)
   };
+}
+
+// MARK: - 11. Profile past-month budget history (Swift `ProfilePanelView` parity)
+
+export interface ProfileMonthSummary {
+  monthKey: string;
+  monthLabel: string;
+  planned: number;
+  actual: number;
+  saved: number;
+}
+
+export interface ProfileExpenseBreakdownRow {
+  category: string;
+  expected: number;
+  actual: number;
+}
+
+/// Percent of planned used by actual spend (can exceed 100).
+export function budgetPercentUsed(actual: number, planned: number): number {
+  if (planned <= 0) return actual > 0 ? 100 : 0;
+  return (actual / planned) * 100;
+}
+
+/// Last `count` calendar months ending at `referenceDate`'s month, oldest first.
+/// Planned uses the **current** budget plan for every bar (same as a static plan snapshot).
+export function profileMonthSummaries(
+  transactions: TransactionItem[],
+  budgetItems: BudgetItem[],
+  referenceDate: Date,
+  count = 5
+): ProfileMonthSummary[] {
+  const planned = totalBudgeted(budgetItems);
+  const monthStart = startOfMonth(referenceDate);
+  const out: ProfileMonthSummary[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = addMonths(monthStart, -i);
+    const mk = monthKey(d);
+    const actual = totalExpensesThisMonth(transactions, d);
+    const saved = planned - actual;
+    out.push({
+      monthKey: mk,
+      monthLabel: shortMonthLabel(d),
+      planned,
+      actual,
+      saved
+    });
+  }
+  return out;
+}
+
+/// Proportional category breakdown (Swift `MonthDetailPopup` synthetic rows).
+export function profileExpenseBreakdownRows(
+  budgetItems: BudgetItem[],
+  monthPlanned: number,
+  monthActual: number
+): ProfileExpenseBreakdownRow[] {
+  const alloc = budgetItems.filter((b) => b.budgetType === 'fixed' || b.budgetType === 'variable');
+  const totalTemplate = Math.max(
+    1,
+    alloc.reduce((s, b) => s + Math.max(0, b.planned), 0)
+  );
+  const ratio = monthActual / Math.max(1, monthPlanned);
+  return alloc.map((item) => {
+    const plannedPortion = Math.max(0, item.planned);
+    const expected = (plannedPortion / totalTemplate) * monthPlanned;
+    const actual = expected * ratio;
+    return { category: item.category, expected, actual };
+  });
 }

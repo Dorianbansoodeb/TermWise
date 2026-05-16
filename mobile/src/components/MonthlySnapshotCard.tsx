@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Card } from './Card';
+import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import type { ThemePalette } from '../theme/tokens';
 import { SPACING } from '../theme/tokens';
-import { formatCurrency } from '../utils/format';
 import {
   recurringBillsForMonth,
   totalBudgeted,
@@ -25,6 +25,7 @@ export function MonthlySnapshotCard({
   referenceDate
 }: MonthlySnapshotCardProps) {
   const theme = useTheme();
+  const { formatMoney } = useAppState();
   const totalBudgetedValue = totalBudgeted(budgetItems);
   const actualSpending = totalExpensesThisMonth(transactions, referenceDate);
   const varUsed = variableSpent(transactions, budgetItems, referenceDate);
@@ -45,16 +46,16 @@ export function MonthlySnapshotCard({
       <Text style={[styles.subtitle, { color: theme.textMuted }]}>
         At-a-glance totals for this calendar month.
       </Text>
-      <SnapshotRow label="Total Budgeted" value={formatCurrency(totalBudgetedValue)} theme={theme} />
-      <SnapshotRow label="Actual Spending" value={formatCurrency(actualSpending)} theme={theme} />
+      <SnapshotRow label="Total Budgeted" value={formatMoney(totalBudgetedValue)} theme={theme} />
+      <SnapshotRow label="Actual Spending" value={formatMoney(actualSpending)} theme={theme} />
       <SnapshotRow
         label={isOverSpent ? 'Over Spent' : 'Remaining Budget'}
-        value={formatCurrency(Math.abs(remaining))}
+        value={formatMoney(Math.abs(remaining))}
         theme={theme}
         positive={!isOverSpent}
         danger={isOverSpent}
       />
-      <SnapshotRow label="Variable Spending Used" value={formatCurrency(varUsed)} theme={theme} />
+      <SnapshotRow label="Variable Spending Used" value={formatMoney(varUsed)} theme={theme} />
       <SnapshotRow
         label="Recurring Bills Paid"
         value={`${paidCount} of ${bills.length}`}

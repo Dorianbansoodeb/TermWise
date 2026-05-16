@@ -8,6 +8,7 @@ import React, {
   useState
 } from 'react';
 import type {
+  AppUserSettings,
   BudgetItem,
   ChartMode,
   ChartRange,
@@ -20,6 +21,8 @@ import type {
 import { buildDemoState } from './demoData';
 import { loadPersistedState, savePersistedState } from './storage';
 import { monthKey } from '../utils/date';
+import { mergeAppUserSettings } from '../utils/appUserSettings';
+import { formatCurrencyWith } from '../utils/format';
 import {
   actualPaidForBill,
   availableToBudgetForMonth,
@@ -45,6 +48,8 @@ export interface AppContextValue {
   budgetItems: BudgetItem[];
   settingsForMonth: MonthlySettings;
   monthlyNote: string;
+  /** All persisted month keys → note text (Profile month detail, etc.). */
+  monthlyNotes: Record<string, string>;
   chartMode: ChartMode;
   variableChartRange: ChartRange;
   /// Derived
@@ -55,6 +60,10 @@ export interface AppContextValue {
   /// Reference "now" — fixed at first hydration so chart slot math is stable
   /// within a single render.
   referenceDate: Date;
+  /** Persisted profile / Settings (theme, currency, reminders flags, …). */
+  appUserSettings: AppUserSettings;
+  /** Format amounts using `appUserSettings.defaultCurrency`. */
+  formatMoney(value: number, opts?: { compact?: boolean }): string;
 
   // Mutations
   addTransaction(input: {
@@ -73,12 +82,16 @@ export interface AppContextValue {
   markBillAsPaid(billId: string): void;
   /** Patch any subset of a BudgetItem (name / planned limit / dueDay / etc.). */
   updateBudgetItem(id: string, patch: Partial<Omit<BudgetItem, 'id'>>): void;
+  /** Append a budget row; assigns a new unique `id` and persists with the rest of app state. */
+  addBudgetItem(draft: Omit<BudgetItem, 'id'>): void;
   setAvailableToBudget(amount: number): void;
   setSavingsTarget(amount: number | undefined): void;
   setDesiredSavingsRate(rate: number): void;
   setMonthlyNote(note: string): void;
+  setMonthlyNoteForMonth(monthKey: string, note: string): void;
   setChartMode(mode: ChartMode): void;
   setVariableChartRange(range: ChartRange): void;
+  updateAppUserSettings(patch: Partial<AppUserSettings>): void;
   resolveIncomePrompt(choice: 'addToBudget' | 'keepAsReserve' | 'cancel'): void;
   dismissUndoBar(opts?: { performAction?: boolean }): void;
   /// Drops local AsyncStorage state and reseeds the demo data.
@@ -107,6 +120,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [monthlyNotes, setMonthlyNotes] = useState<Record<string, string>>({});
   const [chartMode, setChartModeState] = useState<ChartMode>('variable');
   const [variableChartRange, setVariableChartRangeState] = useState<ChartRange>('currentMonth');
+  const [appUserSettings, setAppUserSettings] = useState(() => mergeAppUserSettings(undefined));
+  const appUserSettingsRef = useRef(appUserSettings);
+  appUserSettingsRef.current = appUserSettings;
 
   const [pendingIncomePrompt, setPendingIncomePrompt] = useState<PendingIncomePrompt | null>(null);
   const [pendingUndoBar, setPendingUndoBar] = useState<PendingUndoBar | null>(null);
@@ -140,6 +156,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setMonthlyNotes(state.monthlyNotes);
     setChartModeState(state.chartMode);
     setVariableChartRangeState(state.variableChartRange);
+    setAppUserSettings(mergeAppUserSettings(state.appUserSettings));
   }
 
   useEffect(() => {
@@ -151,7 +168,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       monthlySettingsByMonth,
       monthlyNotes,
       chartMode,
-      variableChartRange
+      variableChartRange,
+      appUserSettings
     };
     savePersistedState(snapshot);
   }, [
@@ -161,7 +179,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     monthlySettingsByMonth,
     monthlyNotes,
     chartMode,
-    variableChartRange
+    variableChartRange,
+    appUserSettings
   ]);
 
   // MARK: settings helpers
@@ -350,6 +369,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const addBudgetItem = useCallback<AppContextValue['addBudgetItem']>((draft) => {
+    const item: BudgetItem = { ...draft, id: uuid() };
+    setBudgetItems((prev) => [...prev, item]);
+  }, []);
+
   const setAvailableToBudget = useCallback<AppContextValue['setAvailableToBudget']>(
     (amount) => {
       updateSettings({ availableToBudget: Math.max(0, amount) });
@@ -378,6 +402,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setMonthlyNotes((prev) => ({ ...prev, [currentMonthKey]: note }));
     },
     [currentMonthKey]
+  );
+
+  const setMonthlyNoteForMonth = useCallback<AppContextValue['setMonthlyNoteForMonth']>(
+    (monthKey, note) => {
+      setMonthlyNotes((prev) => ({ ...prev, [monthKey]: note }));
+    },
+    []
   );
 
   const resolveIncomePrompt = useCallback<AppContextValue['resolveIncomePrompt']>(
@@ -410,10 +441,35 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateAppUserSettings = useCallback<AppContextValue['updateAppUserSettings']>((patch) => {
+    setAppUserSettings((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const formatMoney = useCallback<AppContextValue['formatMoney']>(
+    (value, opts) => formatCurrencyWith(value, appUserSettings.defaultCurrency, opts ?? {}),
+    [appUserSettings.defaultCurrency]
+  );
+
   const resetToDemo = useCallback(async () => {
     const next = buildDemoState(new Date());
-    applyPersistedState(next);
-    await savePersistedState(next);
+    const kept = appUserSettingsRef.current;
+    setTransactions(next.transactions);
+    setBudgetItems(next.budgetItems);
+    setMonthlySettingsByMonth(next.monthlySettingsByMonth);
+    setMonthlyNotes(next.monthlyNotes);
+    setChartModeState(next.chartMode);
+    setVariableChartRangeState(next.variableChartRange);
+    setAppUserSettings(kept);
+    await savePersistedState({
+      schemaVersion: 1,
+      transactions: next.transactions,
+      budgetItems: next.budgetItems,
+      monthlySettingsByMonth: next.monthlySettingsByMonth,
+      monthlyNotes: next.monthlyNotes,
+      chartMode: next.chartMode,
+      variableChartRange: next.variableChartRange,
+      appUserSettings: kept
+    });
   }, []);
 
   const value: AppContextValue = {
@@ -421,22 +477,28 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     budgetItems,
     settingsForMonth,
     monthlyNote,
+    monthlyNotes,
     chartMode,
     variableChartRange,
     availableToBudget,
     savingsTarget,
     isHydrated,
     referenceDate,
+    appUserSettings,
+    formatMoney,
     addTransaction,
     removeTransaction,
     markBillAsPaid,
     updateBudgetItem,
+    addBudgetItem,
     setAvailableToBudget,
     setSavingsTarget,
     setDesiredSavingsRate,
     setMonthlyNote,
+    setMonthlyNoteForMonth,
     setChartMode,
     setVariableChartRange,
+    updateAppUserSettings,
     resolveIncomePrompt,
     dismissUndoBar,
     resetToDemo,

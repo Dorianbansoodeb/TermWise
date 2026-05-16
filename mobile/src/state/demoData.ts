@@ -4,6 +4,7 @@ import type {
   PersistedState,
   TransactionItem
 } from '../types/models';
+import { DEFAULT_APP_USER_SETTINGS } from '../types/models';
 import { addDays, dayKey, monthKey } from '../utils/date';
 
 function uuid(): string {
@@ -207,7 +208,8 @@ export function buildDemoState(now: Date = new Date()): PersistedState {
       [currentMonthKey]: 'Light month — keep coffee runs under $40.'
     },
     chartMode: 'variable',
-    variableChartRange: 'currentMonth'
+    variableChartRange: 'currentMonth',
+    appUserSettings: { ...DEFAULT_APP_USER_SETTINGS }
   };
 }
 

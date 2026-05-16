@@ -1,10 +1,11 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { PillBadge } from './PillBadge';
 import { RADIUS, SPACING } from '../theme/tokens';
 import { colorForCategory } from '../utils/categories';
-import { formatCurrency, formatPercent } from '../utils/format';
+import { formatPercent } from '../utils/format';
 import type { VariableCategoryProgress } from '../utils/financeCalculator';
 import type { BudgetItem } from '../types/models';
 
@@ -19,6 +20,7 @@ interface VariableCategoryRowProps {
 /// `variableCategoryProgress` instead of paid/partial/unpaid bill logic.
 export function VariableCategoryRow({ item, progress, onEdit }: VariableCategoryRowProps) {
   const theme = useTheme();
+  const { formatMoney } = useAppState();
   const isOver = progress.status === 'overBudget';
   const fillColor = isOver ? theme.danger : theme.positive;
   const dotColor = colorForCategory(item.category);
@@ -39,8 +41,8 @@ export function VariableCategoryRow({ item, progress, onEdit }: VariableCategory
             </Text>
           </View>
           <Text style={[styles.meta, { color: theme.textMuted }]}>
-            {formatCurrency(progress.actual, { compact: true })} of{' '}
-            {formatCurrency(progress.planned, { compact: true })}
+            {formatMoney(progress.actual, { compact: true })} of{' '}
+            {formatMoney(progress.planned, { compact: true })}
             {progress.planned > 0 ? ` · ${formatPercent(progress.percentUsed, 0)}` : ''}
           </Text>
         </View>
@@ -64,8 +66,8 @@ export function VariableCategoryRow({ item, progress, onEdit }: VariableCategory
           ]}
         >
           {isOver
-            ? `Over by ${formatCurrency(progress.over)}`
-            : `${formatCurrency(progress.remaining)} left this month`}
+            ? `Over by ${formatMoney(progress.over)}`
+            : `${formatMoney(progress.remaining)} left this month`}
         </Text>
         <Pressable
           onPress={onEdit}

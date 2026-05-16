@@ -12,6 +12,7 @@ import { TransactionsScreen } from '../screens/TransactionsScreen';
 import { BudgetScreen } from '../screens/BudgetScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { QuickAddScreen } from '../screens/QuickAddScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
 import { IncomePromptDialog } from '../components/IncomePromptDialog';
 import { UndoSnackbar } from '../components/UndoSnackbar';
 import { TabBar } from './TabBar';
@@ -47,6 +48,19 @@ export function RootNavigator() {
           options={{
             presentation: 'modal',
             animation: 'slide_from_bottom'
+          }}
+        />
+        <RootStack.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{
+            headerShown: true,
+            title: 'Settings',
+            headerStyle: { backgroundColor: theme.background },
+            headerTintColor: theme.primary,
+            headerTitleStyle: { color: theme.text, fontWeight: '700' },
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: theme.background }
           }}
         />
       </RootStack.Navigator>

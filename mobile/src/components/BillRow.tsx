@@ -1,10 +1,10 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { PillBadge } from './PillBadge';
 import { RADIUS, SPACING } from '../theme/tokens';
 import type { RecurringBill } from '../types/models';
-import { formatCurrency } from '../utils/format';
 
 interface BillRowProps {
   bill: RecurringBill;
@@ -14,6 +14,7 @@ interface BillRowProps {
 
 export function BillRow({ bill, onMarkAsPaid, onEdit }: BillRowProps) {
   const theme = useTheme();
+  const { formatMoney } = useAppState();
   const progress = bill.plannedAmount > 0 ? Math.min(1, bill.actualPaid / bill.plannedAmount) : 0;
 
   const badgeTone =
@@ -33,8 +34,8 @@ export function BillRow({ bill, onMarkAsPaid, onEdit }: BillRowProps) {
           <Text style={[styles.category, { color: theme.text }]}>{bill.category}</Text>
           <Text style={[styles.due, { color: theme.textMuted }]}>
             {bill.dueDay ? `Due day ${bill.dueDay}` : 'No due day'} ·{' '}
-            {formatCurrency(bill.actualPaid, { compact: true })} of{' '}
-            {formatCurrency(bill.plannedAmount, { compact: true })}
+            {formatMoney(bill.actualPaid, { compact: true })} of{' '}
+            {formatMoney(bill.plannedAmount, { compact: true })}
           </Text>
         </View>
         <PillBadge label={badgeLabel} tone={badgeTone} />

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './Card';
+import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
 import type { SpendingBreakdown } from '../utils/financeCalculator';
-import { formatCurrency } from '../utils/format';
 
 interface PlanVsRealityBarProps {
   breakdown: SpendingBreakdown;
@@ -15,6 +15,7 @@ interface PlanVsRealityBarProps {
 /// shows when total exceeds available, tap to expand the legend.
 export function PlanVsRealityBar({ breakdown }: PlanVsRealityBarProps) {
   const theme = useTheme();
+  const { formatMoney } = useAppState();
   const [expanded, setExpanded] = useState(false);
 
   const overBy = breakdown.overBudgetByAmount;
@@ -28,7 +29,7 @@ export function PlanVsRealityBar({ breakdown }: PlanVsRealityBarProps) {
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.text }]}>Plan vs Reality</Text>
           <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-            Actual {formatCurrency(breakdown.actualTotal, { compact: true })} / Available {formatCurrency(breakdown.availableToBudget, { compact: true })}
+            Actual {formatMoney(breakdown.actualTotal, { compact: true })} / Available {formatMoney(breakdown.availableToBudget, { compact: true })}
           </Text>
         </View>
 
@@ -50,7 +51,7 @@ export function PlanVsRealityBar({ breakdown }: PlanVsRealityBarProps) {
 
         {breakdown.isOver && (
           <Text style={[styles.overText, { color: theme.danger }]}>
-            Over budget by {formatCurrency(overBy, { compact: true })}
+            Over budget by {formatMoney(overBy, { compact: true })}
           </Text>
         )}
 
@@ -63,7 +64,7 @@ export function PlanVsRealityBar({ breakdown }: PlanVsRealityBarProps) {
                   {seg.category}
                 </Text>
                 <Text style={[styles.legendValue, { color: theme.textMuted }]}>
-                  {formatCurrency(seg.amount, { compact: true })}
+                  {formatMoney(seg.amount, { compact: true })}
                 </Text>
               </View>
             ))}

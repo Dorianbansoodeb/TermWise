@@ -1,20 +1,61 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
-import { contentBottomPaddingForTabs } from '../navigation/constants';
+import { contentBottomPaddingForTabs, type RootStackParamList } from '../navigation/constants';
 import { Card } from '../components/Card';
-import { PillBadge } from '../components/PillBadge';
+import { ProfilePastMonthsCard } from '../components/ProfilePastMonthsCard';
+import { profileMonthSummaries } from '../utils/financeCalculator';
 
 export function ProfileScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { monthlyNote, setMonthlyNote } = useAppState();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const {
+    monthlyNote,
+    setMonthlyNote,
+    monthlyNotes,
+    setMonthlyNoteForMonth,
+    transactions,
+    budgetItems,
+    referenceDate
+  } = useAppState();
+
+  const pastMonthSummaries = useMemo(
+    () => profileMonthSummaries(transactions, budgetItems, referenceDate, 5),
+    [transactions, budgetItems, referenceDate]
+  );
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+      <View style={[styles.headerBar, { paddingHorizontal: SPACING.lg, paddingTop: SPACING.xs }]}>
+        <View style={styles.headerRow}>
+          <Text style={[styles.title, { color: theme.text }]}>Profile</Text>
+          <Pressable
+            onPress={() => navigation.navigate('Settings')}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+            hitSlop={12}
+            style={({ pressed }) => [
+              styles.settingsIconWrap,
+              {
+                borderColor: theme.border,
+                backgroundColor: theme.surfaceMuted,
+                opacity: pressed ? 0.75 : 1
+              }
+            ]}
+          >
+            <Text style={[styles.settingsIcon, { color: theme.primary }]}>⚙</Text>
+          </Pressable>
+        </View>
+        <Text style={[styles.subtitle, { color: theme.textMuted }]}>
+          Past month budgets and your monthly note. Planning lives on the Budget tab.
+        </Text>
+      </View>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -22,10 +63,12 @@ export function ProfileScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.title, { color: theme.text }]}>Profile</Text>
-        <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-          Monthly note and app settings. Budget planning lives on the Budget tab.
-        </Text>
+        <ProfilePastMonthsCard
+          summaries={pastMonthSummaries}
+          budgetItems={budgetItems}
+          monthlyNotes={monthlyNotes}
+          onSetNoteForMonth={setMonthlyNoteForMonth}
+        />
 
         <Card>
           <Text style={[styles.section, { color: theme.text }]}>Monthly Note</Text>
@@ -48,42 +91,8 @@ export function ProfileScreen() {
             placeholderTextColor={theme.textMuted}
           />
         </Card>
-
-        <PlaceholderCard
-          title="Account"
-          helper="Sign in and manage your profile when cloud sync is available."
-        />
-        <PlaceholderCard
-          title="Currency"
-          helper="Display currency and formatting preferences."
-        />
-        <PlaceholderCard
-          title="App settings"
-          helper="Theme, notifications, and other preferences."
-        />
-        <PlaceholderCard
-          title="Import / Export"
-          helper="Back up or restore your local data."
-        />
-        <PlaceholderCard
-          title="Privacy & security"
-          helper="Data controls and security options."
-        />
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function PlaceholderCard({ title, helper }: { title: string; helper: string }) {
-  const theme = useTheme();
-  return (
-    <Card>
-      <View style={styles.placeholderHeader}>
-        <Text style={[styles.section, { color: theme.text }]}>{title}</Text>
-        <PillBadge label="Coming soon" tone="neutral" />
-      </View>
-      <Text style={[styles.helper, { color: theme.textMuted, marginBottom: 0 }]}>{helper}</Text>
-    </Card>
   );
 }
 
@@ -91,17 +100,41 @@ const styles = StyleSheet.create({
   root: {
     flex: 1
   },
+  headerBar: {
+    paddingBottom: SPACING.sm
+  },
   scroll: {
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: 0,
     gap: SPACING.lg
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md
+  },
   title: {
+    flex: 1,
     fontSize: 26,
     fontWeight: '800'
   },
   subtitle: {
     fontSize: 12,
-    marginTop: -SPACING.sm
+    marginTop: SPACING.sm
+  },
+  settingsIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  settingsIcon: {
+    fontSize: 22,
+    lineHeight: 24,
+    textAlign: 'center'
   },
   section: {
     fontSize: 16,
@@ -120,11 +153,5 @@ const styles = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: 'top',
     fontSize: 14
-  },
-  placeholderHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.xs
   }
 });

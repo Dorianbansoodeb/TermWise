@@ -24,7 +24,6 @@ import { isVariableTransactionCategory } from './categories';
 
 export const VARIABLE_PICKER_RANGES: readonly ChartRange[] = [
   'sevenDays',
-  'oneWeek',
   'thirtyDays',
   'currentMonth'
 ];
@@ -33,8 +32,6 @@ export function rangeShortLabel(range: ChartRange): string {
   switch (range) {
     case 'sevenDays':
       return '7D';
-    case 'oneWeek':
-      return '1W';
     case 'thirtyDays':
       return '30D';
     case 'currentMonth':
@@ -42,17 +39,15 @@ export function rangeShortLabel(range: ChartRange): string {
   }
 }
 
-/// Trailing-window ranges (7D / 1W / 30D) hide the month-end projection line
+/// Trailing-window ranges (7D / 30D) hide the month-end projection line
 /// because their forecast is unstable — same rule as iOS.
 export function isTrailingShortRange(range: ChartRange): boolean {
-  return range === 'sevenDays' || range === 'oneWeek' || range === 'thirtyDays';
+  return range === 'sevenDays' || range === 'thirtyDays';
 }
 
 export function selectedDays(range: ChartRange, daysInCalendarMonth: number): number {
   switch (range) {
     case 'sevenDays':
-      return 7;
-    case 'oneWeek':
       return 7;
     case 'thirtyDays':
       return 30;
@@ -268,7 +263,7 @@ export function buildChartSeries(args: {
     drawsProjectionLine = !isTrailingShortRange(effectiveRange);
     limitLines = [
       {
-        label: 'Limit',
+        label: `Limit ${formatDollars(scaled.periodVariableLimit)}`,
         value: scaled.periodVariableLimit,
         color: '#94a3b8',
         dashed: true

@@ -3,10 +3,10 @@ import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import type { ChartSeries } from '../utils/chartCalculator';
-import { tooltipRowsForSlot } from '../utils/chartCalculator';
+import { isTrailingShortRange, tooltipRowsForSlot } from '../utils/chartCalculator';
 import { useTheme } from '../theme/useTheme';
+import { useAppState } from '../state/AppState';
 import { RADIUS, SPACING } from '../theme/tokens';
-import { formatCurrency } from '../utils/format';
 import { shortMonthDay } from '../utils/date';
 
 interface SpendTrendChartProps {
@@ -15,10 +15,11 @@ interface SpendTrendChartProps {
 }
 
 /// Lightweight SVG spending trend chart with: actual cumulative line (blue),
-/// pace line, optional projection (dashed red), and per-slot tooltip. Designed
-/// for parity with the SwiftUI `LineTrendChartView`.
+/// optional orange budget-pace line (variable 7D / 30D only), optional
+/// projection (dashed red), limit reference lines, and per-slot tooltip.
 export function SpendTrendChart({ series, height = 220 }: SpendTrendChartProps) {
   const theme = useTheme();
+  const { formatMoney } = useAppState();
   const [width, setWidth] = useState(0);
   const [activeSlot, setActiveSlot] = useState<number | null>(null);
 
@@ -32,16 +33,20 @@ export function SpendTrendChart({ series, height = 220 }: SpendTrendChartProps) 
   const todayIdx = Math.max(1, Math.min(series.todayIdx, slotCount));
   const todayChartIdx = todayIdx - 1;
 
+  const showPaceLine = series.mode === 'variable' && isTrailingShortRange(series.range);
+
   const dataMax = useMemo(() => {
     let maxValue = 0;
     for (const v of series.actualCumulative) maxValue = Math.max(maxValue, v);
-    for (const v of series.paceCumulative) maxValue = Math.max(maxValue, v);
+    if (showPaceLine) {
+      for (const v of series.paceCumulative) maxValue = Math.max(maxValue, v);
+    }
     for (const l of series.limitLines) maxValue = Math.max(maxValue, l.value);
     if (series.drawsProjectionLine) {
       maxValue = Math.max(maxValue, series.projectedEndValue);
     }
     return maxValue > 0 ? maxValue * 1.1 : 1;
-  }, [series]);
+  }, [series, showPaceLine]);
 
   const xForSlot = (i: number) =>
     margin.left + (slotCount <= 1 ? 0 : (innerW * i) / (slotCount - 1));
@@ -61,14 +66,14 @@ export function SpendTrendChart({ series, height = 220 }: SpendTrendChartProps) 
   }, [series, slotCount, todayChartIdx, innerW, innerH, dataMax]);
 
   const pacePath = useMemo(() => {
-    if (slotCount === 0) return '';
+    if (!showPaceLine || slotCount === 0) return '';
     return series.paceCumulative
       .map(
         (value, i) =>
           `${i === 0 ? 'M' : 'L'}${xForSlot(i).toFixed(2)} ${yForValue(value).toFixed(2)}`
       )
       .join(' ');
-  }, [series, slotCount, innerW, innerH, dataMax]);
+  }, [showPaceLine, series, slotCount, innerW, innerH, dataMax]);
 
   const projectionPath = useMemo(() => {
     if (!series.drawsProjectionLine || slotCount === 0) return '';
@@ -155,8 +160,8 @@ export function SpendTrendChart({ series, height = 220 }: SpendTrendChartProps) 
                 />
               )}
 
-              {/* Pace line */}
-              {pacePath !== '' && (
+              {/* Budget pace (orange) — variable trailing ranges only (7D / 30D) */}
+              {showPaceLine && pacePath !== '' && (
                 <Path
                   d={pacePath}
                   stroke={theme.chartPace}
@@ -248,7 +253,7 @@ export function SpendTrendChart({ series, height = 220 }: SpendTrendChartProps) 
             <View key={row.label} style={styles.tooltipRow}>
               <Text style={[styles.tooltipLabel, { color: theme.textMuted }]}>{row.label}</Text>
               <Text style={[styles.tooltipValue, { color: theme.text }]}>
-                {formatCurrency(row.value, { compact: true })}
+                {formatMoney(row.value, { compact: true })}
               </Text>
             </View>
           ))}

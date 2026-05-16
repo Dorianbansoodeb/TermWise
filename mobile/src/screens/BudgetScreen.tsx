@@ -16,6 +16,7 @@ import { MonthlySnapshotCard } from '../components/MonthlySnapshotCard';
 import { BudgetPlanningPieCard } from '../components/BudgetPlanningPieCard';
 import { Card } from '../components/Card';
 import { BillRow } from '../components/BillRow';
+import { AddBudgetItemSheet } from '../components/AddBudgetItemSheet';
 import { EditRecurringBillSheet } from '../components/EditRecurringBillSheet';
 import { VariableCategoryRow } from '../components/VariableCategoryRow';
 import { EditVariableCategorySheet } from '../components/EditVariableCategorySheet';
@@ -32,6 +33,7 @@ export function BudgetScreen() {
     savingsTarget,
     markBillAsPaid,
     updateBudgetItem,
+    addBudgetItem,
     referenceDate,
     setAvailableToBudget,
     setSavingsTarget,
@@ -41,6 +43,7 @@ export function BudgetScreen() {
 
   const [editingVariableId, setEditingVariableId] = useState<string | null>(null);
   const [editingBillId, setEditingBillId] = useState<string | null>(null);
+  const [addBudgetItemOpen, setAddBudgetItemOpen] = useState(false);
 
   const totalIncome = totalIncomeThisMonth(transactions, referenceDate);
   const recurringBills = useMemo(
@@ -88,6 +91,8 @@ export function BudgetScreen() {
           budgetItems={budgetItems}
           referenceDate={referenceDate}
         />
+
+        <PrimaryButton title="Add Budget Item" onPress={() => setAddBudgetItemOpen(true)} />
 
         <BudgetPlanningPieCard
           budgetItems={budgetItems}
@@ -148,6 +153,12 @@ export function BudgetScreen() {
           <PrimaryButton title="Reset to Demo Data" variant="danger" onPress={resetToDemo} />
         </Card>
       </ScrollView>
+
+      <AddBudgetItemSheet
+        visible={addBudgetItemOpen}
+        onClose={() => setAddBudgetItemOpen(false)}
+        onAdd={(draft) => addBudgetItem(draft)}
+      />
 
       <EditVariableCategorySheet
         visible={editingVariableId !== null}

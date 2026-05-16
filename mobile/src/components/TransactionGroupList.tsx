@@ -1,11 +1,11 @@
 import React, { useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { RectButton, Swipeable } from 'react-native-gesture-handler';
+import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
 import { RADIUS, SPACING } from '../theme/tokens';
 import type { TransactionGroup } from '../utils/financeCalculator';
 import { netExpenseAmount } from '../utils/financeCalculator';
-import { formatCurrency } from '../utils/format';
 import { colorForCategory } from '../utils/categories';
 import { relativeDayLabel } from '../utils/date';
 import type { TransactionItem } from '../types/models';
@@ -21,6 +21,7 @@ interface TransactionGroupListProps {
 /// withUndo: true })` from the parent.
 export function TransactionGroupList({ groups, onRemove }: TransactionGroupListProps) {
   const theme = useTheme();
+  const { formatMoney } = useAppState();
   const rowRefs = useRef<Map<string, Swipeable>>(new Map());
 
   if (groups.length === 0) {
@@ -39,7 +40,7 @@ export function TransactionGroupList({ groups, onRemove }: TransactionGroupListP
               {relativeDayLabel(g.date)}
             </Text>
             <Text style={[styles.groupTotal, { color: theme.textMuted }]}>
-              {formatCurrency(g.total, { compact: true })}
+              {formatMoney(g.total, { compact: true })}
             </Text>
           </View>
           <View
@@ -51,8 +52,8 @@ export function TransactionGroupList({ groups, onRemove }: TransactionGroupListP
             {g.transactions.map((t, idx) => {
               const value =
                 t.type === 'expense'
-                  ? `-${formatCurrency(netExpenseAmount(t), { compact: true })}`
-                  : `+${formatCurrency(t.amount, { compact: true })}`;
+                  ? `-${formatMoney(netExpenseAmount(t), { compact: true })}`
+                  : `+${formatMoney(t.amount, { compact: true })}`;
 
               const row = (
                 <View
