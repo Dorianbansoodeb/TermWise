@@ -18,9 +18,21 @@ export function BillRow({ bill, onMarkAsPaid, onEdit }: BillRowProps) {
   const progress = bill.plannedAmount > 0 ? Math.min(1, bill.actualPaid / bill.plannedAmount) : 0;
 
   const badgeTone =
-    bill.status === 'paid' ? 'positive' : bill.status === 'partial' ? 'warning' : 'neutral';
+    bill.status === 'paid'
+      ? 'positive'
+      : bill.status === 'partial'
+        ? 'warning'
+        : bill.status === 'overdue'
+          ? 'danger'
+          : 'warning';
   const badgeLabel =
-    bill.status === 'paid' ? 'Paid' : bill.status === 'partial' ? 'Partially Paid' : 'Unpaid';
+    bill.status === 'paid'
+      ? 'Paid'
+      : bill.status === 'partial'
+        ? 'Partially Paid'
+        : bill.status === 'overdue'
+          ? 'Overdue'
+          : 'Upcoming';
 
   return (
     <View

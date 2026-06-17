@@ -84,11 +84,11 @@ export interface RecurringBill {
   frequency: PaymentFrequency;
   /** Computed: sum of expense transactions matching this bill this month. */
   actualPaid: number;
-  /** Computed: paid / partial / unpaid label. */
+  /** Computed: paid / partial / upcoming / overdue label. */
   status: FixedBillStatus;
 }
 
-export type FixedBillStatus = 'paid' | 'partial' | 'unpaid';
+export type FixedBillStatus = 'paid' | 'partial' | 'upcoming' | 'overdue';
 
 /// Color palette tokens. Mirrors `CategoryPalette.swift`.
 export type SpendingCategoryColor =
