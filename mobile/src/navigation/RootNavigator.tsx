@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import {
   createNativeStackNavigator,
@@ -13,6 +13,7 @@ import { BudgetScreen } from '../screens/BudgetScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { QuickAddScreen } from '../screens/QuickAddScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { IncomePromptDialog } from '../components/IncomePromptDialog';
 import { UndoSnackbar } from '../components/UndoSnackbar';
 import { TabBar } from './TabBar';
@@ -22,6 +23,7 @@ const RootStack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const theme = useTheme();
+  const { isHydrated, hasCompletedOnboarding } = useAppState();
   const navTheme = {
     ...(theme.scheme === 'dark' ? DarkTheme : DefaultTheme),
     colors: {
@@ -33,6 +35,19 @@ export function RootNavigator() {
       primary: theme.primary
     }
   };
+
+  if (!isHydrated) {
+    return (
+      <View style={[styles.loading, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
+  }
+
+  if (!hasCompletedOnboarding) {
+    return <OnboardingScreen />;
+  }
+
   return (
     <NavigationContainer theme={navTheme}>
       <RootStack.Navigator
@@ -72,12 +87,7 @@ type TabsRootProps = NativeStackScreenProps<RootStackParamList, 'Tabs'>;
 
 function TabsRoot({ navigation }: TabsRootProps) {
   const theme = useTheme();
-  const { isHydrated } = useAppState();
   const [active, setActive] = useState<TabRoute>('Dashboard');
-
-  if (!isHydrated) {
-    return <View style={[styles.root, { backgroundColor: theme.background }]} />;
-  }
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
@@ -101,6 +111,11 @@ function TabsRoot({ navigation }: TabsRootProps) {
 }
 
 const styles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   root: {
     flex: 1
   },

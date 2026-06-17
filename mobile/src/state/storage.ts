@@ -50,6 +50,9 @@ export async function loadPersistedState(): Promise<PersistedState | null> {
     if (!parsed || parsed.schemaVersion !== 1) return null;
     parsed.variableChartRange = normalizeVariableChartRange(parsed.variableChartRange);
     parsed.appUserSettings = mergeAppUserSettings(parsed.appUserSettings);
+    if (typeof parsed.hasCompletedOnboarding !== 'boolean') {
+      parsed.hasCompletedOnboarding = false;
+    }
     return parsed;
   } catch (err) {
     console.warn('[termwise] failed to load persisted state', err);

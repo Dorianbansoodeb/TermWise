@@ -57,6 +57,8 @@ export interface AppContextValue {
   savingsTarget: number;
   /// Loaded flag — UI shows splash until storage is read.
   isHydrated: boolean;
+  /** False until the user finishes first-run onboarding. */
+  hasCompletedOnboarding: boolean;
   /// Reference "now" — fixed at first hydration so chart slot math is stable
   /// within a single render.
   referenceDate: Date;
@@ -96,6 +98,8 @@ export interface AppContextValue {
   dismissUndoBar(opts?: { performAction?: boolean }): void;
   /// Drops local AsyncStorage state and reseeds the demo data.
   resetToDemo(): Promise<void>;
+  /** Marks first-run onboarding complete and persists. */
+  completeOnboarding(): void;
 
   // Transient UI
   pendingIncomePrompt: PendingIncomePrompt | null;
@@ -121,8 +125,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [chartMode, setChartModeState] = useState<ChartMode>('variable');
   const [variableChartRange, setVariableChartRangeState] = useState<ChartRange>('currentMonth');
   const [appUserSettings, setAppUserSettings] = useState(() => mergeAppUserSettings(undefined));
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const appUserSettingsRef = useRef(appUserSettings);
   appUserSettingsRef.current = appUserSettings;
+  const hasCompletedOnboardingRef = useRef(hasCompletedOnboarding);
+  hasCompletedOnboardingRef.current = hasCompletedOnboarding;
 
   const [pendingIncomePrompt, setPendingIncomePrompt] = useState<PendingIncomePrompt | null>(null);
   const [pendingUndoBar, setPendingUndoBar] = useState<PendingUndoBar | null>(null);
@@ -163,6 +170,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setChartModeState(state.chartMode);
     setVariableChartRangeState(state.variableChartRange);
     setAppUserSettings(mergeAppUserSettings(state.appUserSettings));
+    setHasCompletedOnboarding(state.hasCompletedOnboarding);
   }
 
   useEffect(() => {
@@ -175,7 +183,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       monthlyNotes,
       chartMode,
       variableChartRange,
-      appUserSettings
+      appUserSettings,
+      hasCompletedOnboarding
     };
     savePersistedState(snapshot);
   }, [
@@ -186,7 +195,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     monthlyNotes,
     chartMode,
     variableChartRange,
-    appUserSettings
+    appUserSettings,
+    hasCompletedOnboarding
   ]);
 
   // MARK: settings helpers
@@ -474,8 +484,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       monthlyNotes: next.monthlyNotes,
       chartMode: next.chartMode,
       variableChartRange: next.variableChartRange,
-      appUserSettings: kept
+      appUserSettings: kept,
+      hasCompletedOnboarding: hasCompletedOnboardingRef.current
     });
+  }, []);
+
+  const completeOnboarding = useCallback(() => {
+    setHasCompletedOnboarding(true);
   }, []);
 
   const value: AppContextValue = {
@@ -489,6 +504,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     availableToBudget,
     savingsTarget,
     isHydrated,
+    hasCompletedOnboarding,
     referenceDate,
     appUserSettings,
     formatMoney,
@@ -508,6 +524,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     resolveIncomePrompt,
     dismissUndoBar,
     resetToDemo,
+    completeOnboarding,
     pendingIncomePrompt,
     pendingUndoBar
   };

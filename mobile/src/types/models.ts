@@ -174,4 +174,6 @@ export interface PersistedState {
   chartMode: ChartMode;
   variableChartRange: ChartRange;
   appUserSettings: AppUserSettings;
+  /** First-run onboarding — false until the user finishes the intro flow. */
+  hasCompletedOnboarding: boolean;
 }
