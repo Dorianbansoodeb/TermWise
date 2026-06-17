@@ -32,6 +32,7 @@ export function UndoSnackbar() {
         </Text>
         <Pressable
           onPress={() => dismissUndoBar({ performAction: true })}
+          accessibilityLabel="Undo"
           hitSlop={8}
           style={({ pressed }) => [styles.undoButton, pressed && { opacity: 0.6 }]}
         >

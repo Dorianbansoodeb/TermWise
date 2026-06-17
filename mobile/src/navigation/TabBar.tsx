@@ -19,11 +19,11 @@ interface TabBarProps {
   onQuickAdd: () => void;
 }
 
-const ITEMS: { route: TabRoute; label: string; icon: string }[] = [
-  { route: 'Dashboard', label: 'Home', icon: '\u2302' },
-  { route: 'Transactions', label: 'Transactions', icon: '\u2630' },
-  { route: 'Budget', label: 'Budget', icon: '\u25BC' },
-  { route: 'Profile', label: 'Profile', icon: '\u263A' }
+const ITEMS: { route: TabRoute; label: string }[] = [
+  { route: 'Dashboard', label: 'Home' },
+  { route: 'Transactions', label: 'List' },
+  { route: 'Budget', label: 'Wallet' },
+  { route: 'Profile', label: 'Profile' }
 ];
 
 /// SwiftUI-style bottom nav: wide pill with padded tab cells, rounded capsule
@@ -61,6 +61,7 @@ export function TabBar({ active, onSelect, onQuickAdd }: TabBarProps) {
               key={item.route}
               onPress={() => onSelect(item.route)}
               accessibilityRole="tab"
+              accessibilityLabel={item.label}
               accessibilityState={{ selected: isActive }}
               style={styles.tabPressable}
             >
@@ -73,14 +74,6 @@ export function TabBar({ active, onSelect, onQuickAdd }: TabBarProps) {
                   }
                 ]}
               >
-                <Text
-                  style={[
-                    styles.tabIcon,
-                    { color: isActive ? theme.primary : theme.textMuted }
-                  ]}
-                >
-                  {item.icon}
-                </Text>
                 <Text
                   style={[
                     styles.tabLabel,
@@ -166,14 +159,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8
   },
-  tabIcon: {
-    fontSize: 20,
-    lineHeight: 22,
-    textAlign: 'center'
-  },
   tabLabel: {
-    fontSize: 11,
-    marginTop: 4,
+    fontSize: 12,
     textAlign: 'center',
     letterSpacing: -0.15
   },

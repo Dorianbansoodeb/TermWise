@@ -49,6 +49,8 @@ export function TransactionsScreen() {
               <Pressable
                 key={f.value}
                 onPress={() => setFilter(f.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
                 style={[
                   styles.filter,
                   selected && {
