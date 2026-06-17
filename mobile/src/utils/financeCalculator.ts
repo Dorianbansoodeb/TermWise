@@ -538,10 +538,15 @@ export type TransactionFilter = 'all' | 'expense' | 'income';
 
 export function filterTransactions(
   transactions: TransactionItem[],
-  filter: TransactionFilter
+  filter: TransactionFilter,
+  category?: string | null
 ): TransactionItem[] {
-  if (filter === 'all') return transactions;
-  return transactions.filter((t) => t.type === filter);
+  let result =
+    filter === 'all' ? transactions : transactions.filter((t) => t.type === filter);
+  if (category) {
+    result = result.filter((t) => t.category === category);
+  }
+  return result;
 }
 
 // MARK: - 7. Plan vs Reality spending breakdown
