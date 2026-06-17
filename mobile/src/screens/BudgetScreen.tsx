@@ -21,6 +21,7 @@ import { EditRecurringBillSheet } from '../components/EditRecurringBillSheet';
 import { VariableCategoryRow } from '../components/VariableCategoryRow';
 import { EditVariableCategorySheet } from '../components/EditVariableCategorySheet';
 import { PrimaryButton } from '../components/PrimaryButton';
+import type { BudgetPlannedPieSlice } from '../utils/budgetPlanVisualization';
 
 export function BudgetScreen() {
   const theme = useTheme();
@@ -53,6 +54,11 @@ export function BudgetScreen() {
   );
 
   const variableItems = budgetItems.filter((b) => b.budgetType === 'variable');
+
+  const handleEditBreakdownSlice = (slice: BudgetPlannedPieSlice) => {
+    if (slice.kind === 'fixed') setEditingBillId(slice.id);
+    else setEditingVariableId(slice.id);
+  };
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
@@ -99,6 +105,7 @@ export function BudgetScreen() {
           budgetItems={budgetItems}
           availableToBudget={availableToBudget}
           referenceDate={referenceDate}
+          onEditSlice={handleEditBreakdownSlice}
         />
 
         <View>

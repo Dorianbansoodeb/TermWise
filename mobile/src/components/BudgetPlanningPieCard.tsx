@@ -30,6 +30,7 @@ interface BudgetPlanningPieCardProps {
   budgetItems: BudgetItem[];
   availableToBudget: number;
   referenceDate: Date;
+  onEditSlice?: (slice: BudgetPlannedPieSlice) => void;
 }
 
 const PIE_SIZE = 120;
@@ -129,7 +130,8 @@ function buildLargeWedges(
 export function BudgetPlanningPieCard({
   budgetItems,
   availableToBudget,
-  referenceDate
+  referenceDate,
+  onEditSlice
 }: BudgetPlanningPieCardProps) {
   const theme = useTheme();
   const { formatMoney } = useAppState();
@@ -458,22 +460,69 @@ export function BudgetPlanningPieCard({
           ) : null}
 
           {total > 0
-            ? decorated.map(({ slice, color }) => (
-                <View key={slice.id} style={styles.breakdownRow}>
-                  <View style={[styles.breakdownDot, { backgroundColor: color }]} />
-                  <View style={styles.breakdownMid}>
-                    <Text style={[styles.breakdownName, { color: theme.text }]} numberOfLines={2}>
-                      {slice.label}
+            ? decorated.map(({ slice, color }) => {
+                const canEdit = !!onEditSlice && slice.id !== OTHER_VARIABLE_SLICE_ID;
+                const openEditor = () => onEditSlice?.(slice);
+
+                const row = (
+                  <>
+                    <View style={[styles.breakdownDot, { backgroundColor: color }]} />
+                    <View style={styles.breakdownMid}>
+                      <View style={styles.breakdownNameRow}>
+                        <Text
+                          style={[styles.breakdownName, { color: theme.text }]}
+                          numberOfLines={2}
+                        >
+                          {slice.label}
+                        </Text>
+                        {canEdit ? (
+                          <Pressable
+                            onPress={openEditor}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Edit ${slice.label}`}
+                            style={({ pressed }) => [
+                              styles.editIconBtn,
+                              {
+                                borderColor: theme.border,
+                                backgroundColor: theme.surfaceMuted,
+                                opacity: pressed ? 0.65 : 1
+                              }
+                            ]}
+                          >
+                            <Text style={[styles.editIcon, { color: theme.textMuted }]}>✎</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                      <Text style={[styles.breakdownAmt, { color: theme.textMuted }]}>
+                        {formatMoney(slice.value)}
+                      </Text>
+                    </View>
+                    <Text style={[styles.breakdownPct, { color: theme.text }]}>
+                      {formatSlicePct(slice.value, total)}
                     </Text>
-                    <Text style={[styles.breakdownAmt, { color: theme.textMuted }]}>
-                      {formatMoney(slice.value)}
-                    </Text>
+                  </>
+                );
+
+                return canEdit ? (
+                  <Pressable
+                    key={slice.id}
+                    onPress={openEditor}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${slice.label}`}
+                    style={({ pressed }) => [
+                      styles.breakdownRow,
+                      { opacity: pressed ? 0.88 : 1 }
+                    ]}
+                  >
+                    {row}
+                  </Pressable>
+                ) : (
+                  <View key={slice.id} style={styles.breakdownRow}>
+                    {row}
                   </View>
-                  <Text style={[styles.breakdownPct, { color: theme.text }]}>
-                    {formatSlicePct(slice.value, total)}
-                  </Text>
-                </View>
-              ))
+                );
+              })
             : null}
           <View
             style={
@@ -621,9 +670,28 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0
   },
+  breakdownNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs
+  },
   breakdownName: {
     fontSize: 13,
-    fontWeight: '600'
+    fontWeight: '600',
+    flexShrink: 1
+  },
+  editIconBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  editIcon: {
+    fontSize: 13,
+    lineHeight: 15,
+    fontWeight: '700'
   },
   breakdownAmt: {
     fontSize: 12,
