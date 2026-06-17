@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import {
   createNativeStackNavigator,
@@ -76,7 +76,11 @@ function TabsRoot({ navigation }: TabsRootProps) {
   const [active, setActive] = useState<TabRoute>('Dashboard');
 
   if (!isHydrated) {
-    return <View style={[styles.root, { backgroundColor: theme.background }]} />;
+    return (
+      <View style={[styles.root, styles.hydrating, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
   }
 
   return (
@@ -103,6 +107,10 @@ function TabsRoot({ navigation }: TabsRootProps) {
 const styles = StyleSheet.create({
   root: {
     flex: 1
+  },
+  hydrating: {
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   body: {
     flex: 1

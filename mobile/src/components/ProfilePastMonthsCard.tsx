@@ -63,6 +63,9 @@ export function ProfilePastMonthsCard({
     <>
       <Card>
         <Text style={[styles.section, { color: theme.text }]}>Past months</Text>
+        <Text style={[styles.subtitle, { color: theme.textMuted }]}>
+          Past category breakdown is estimated from your current plan.
+        </Text>
         <Text style={[styles.helper, { color: theme.textMuted }]}>
           Tap a month for planned vs actual, a category-style breakdown, and the note you saved for
           that month.
@@ -227,6 +230,10 @@ const styles = StyleSheet.create({
   section: {
     fontSize: 16,
     fontWeight: '700'
+  },
+  subtitle: {
+    fontSize: 12,
+    marginTop: 2
   },
   helper: {
     fontSize: 12,

@@ -19,6 +19,10 @@ export function PlanVsRealityBar({ breakdown }: PlanVsRealityBarProps) {
   const [expanded, setExpanded] = useState(false);
 
   const overBy = breakdown.overBudgetByAmount;
+  const segmentsAllZero =
+    breakdown.segments.length === 0 ||
+    breakdown.segments.every((seg) => seg.amount === 0);
+
   return (
     <Card
       style={[
@@ -52,6 +56,12 @@ export function PlanVsRealityBar({ breakdown }: PlanVsRealityBarProps) {
         {breakdown.isOver && (
           <Text style={[styles.overText, { color: theme.danger }]}>
             Over budget by {formatMoney(overBy, { compact: true })}
+          </Text>
+        )}
+
+        {segmentsAllZero && (
+          <Text style={[styles.hintText, { color: theme.textMuted }]}>
+            No expense transactions yet this month.
           </Text>
         )}
 
@@ -97,6 +107,10 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     fontSize: 12,
     fontWeight: '600'
+  },
+  hintText: {
+    marginTop: SPACING.sm,
+    fontSize: 12
   },
   legend: {
     marginTop: SPACING.sm,
