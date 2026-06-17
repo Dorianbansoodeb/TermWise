@@ -39,8 +39,7 @@ export function BudgetScreen() {
     referenceDate,
     setAvailableToBudget,
     setSavingsTarget,
-    setDesiredSavingsRate,
-    resetToDemo
+    setDesiredSavingsRate
   } = useAppState();
 
   const [editingVariableId, setEditingVariableId] = useState<string | null>(null);
@@ -152,14 +151,6 @@ export function BudgetScreen() {
             ))
           )}
         </View>
-
-        <Card>
-          <Text style={[styles.section, { color: theme.text }]}>Data</Text>
-          <Text style={[styles.helper, { color: theme.textMuted }]}>
-            Reset the local snapshot to the bundled student demo. This clears AsyncStorage.
-          </Text>
-          <PrimaryButton title="Reset to Demo Data" variant="danger" onPress={resetToDemo} />
-        </Card>
       </ScrollView>
 
       <AddBudgetItemSheet

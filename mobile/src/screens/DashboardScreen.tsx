@@ -24,7 +24,11 @@ import { EditTransactionSheet } from '../components/EditTransactionSheet';
 import { buildChartSeries } from '../utils/chartCalculator';
 import type { TransactionItem } from '../types/models';
 
-export function DashboardScreen() {
+type DashboardScreenProps = {
+  onNavigateToTransactions?: () => void;
+};
+
+export function DashboardScreen({ onNavigateToTransactions }: DashboardScreenProps = {}) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const {
@@ -112,13 +116,16 @@ export function DashboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
-          <View>
+          <View style={styles.hero}>
             <Text style={[styles.greeting, { color: theme.textMuted }]}>This month</Text>
-            <Text style={[styles.income, { color: theme.text }]}>
-              {formatMoney(totalIncome)}
+            <Text style={[styles.heroMetric, { color: theme.text }]}>
+              {formatMoney(availableToBudget)}
             </Text>
-            <Text style={[styles.subtle, { color: theme.textMuted }]}>
-              Available to Budget {formatMoney(availableToBudget)}
+            <Text style={[styles.heroSecondary, { color: theme.textMuted }]}>
+              {formatMoney(totalIncome)} income
+            </Text>
+            <Text style={[styles.heroHelper, { color: theme.textMuted }]}>
+              Money you've chosen to spend this month.
             </Text>
           </View>
           <PillBadge
@@ -210,7 +217,20 @@ export function DashboardScreen() {
         <PlanVsRealityBar breakdown={breakdown} />
 
         <View>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Transactions</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Transactions</Text>
+            {onNavigateToTransactions && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="See all transactions"
+                onPress={onNavigateToTransactions}
+                hitSlop={8}
+                style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Text style={[styles.seeAll, { color: theme.primary }]}>See all</Text>
+              </Pressable>
+            )}
+          </View>
           <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
             Tap a row to edit. Swipe left to delete. Undo is available for 5 seconds.
           </Text>
@@ -248,20 +268,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start'
   },
+  hero: {
+    flex: 1
+  },
   greeting: {
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.4,
     textTransform: 'uppercase'
   },
-  income: {
+  heroMetric: {
     fontSize: 30,
     fontWeight: '800',
     marginTop: 2
   },
-  subtle: {
-    fontSize: 12,
+  heroSecondary: {
+    fontSize: 14,
+    fontWeight: '600',
     marginTop: 4
+  },
+  heroHelper: {
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 16
   },
   cardHeader: {
     flexDirection: 'row',
@@ -310,10 +339,19 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     lineHeight: 16
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4
+  },
   sectionTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4
+    fontWeight: '700'
+  },
+  seeAll: {
+    fontSize: 13,
+    fontWeight: '600'
   },
   sectionHint: {
     fontSize: 12,

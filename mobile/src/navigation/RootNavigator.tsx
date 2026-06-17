@@ -92,7 +92,9 @@ function TabsRoot({ navigation }: TabsRootProps) {
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
       <View style={styles.body}>
-        {active === 'Dashboard' && <DashboardScreen />}
+        {active === 'Dashboard' && (
+          <DashboardScreen onNavigateToTransactions={() => setActive('Transactions')} />
+        )}
         {active === 'Transactions' && <TransactionsScreen />}
         {active === 'Budget' && <BudgetScreen />}
         {active === 'Profile' && <ProfileScreen />}
