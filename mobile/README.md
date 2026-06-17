@@ -3,119 +3,88 @@
 Cross-platform React Native port of the SwiftUI TermWise prototype. Built with
 **Expo + TypeScript** and **React Navigation**, with **AsyncStorage** for local
 persistence. The SwiftUI app at `../TermWise` remains the source of truth for
-UI, finance rules, and behavior — every screen and rule here is a deliberate
-port of the corresponding iOS view/domain helper.
+finance rules — domain helpers in `src/utils/` mirror the iOS calculators.
 
 ## Run
 
 ```bash
 cd mobile
 npm install
-npx expo start
+npx expo start --localhost
 ```
 
-Then press `i` for iOS Simulator, `a` for Android Emulator, or scan the QR
-with Expo Go on a device.
+Then press `i` for iOS Simulator. Prefer `--localhost` over LAN URLs in the
+simulator (more reliable than `192.168.x.x`).
 
-## What's in here
-
-```
-mobile/
-├── App.tsx                                 // Provider + navigation root
-├── app.json                                // Expo config
-├── babel.config.js
-├── package.json
-├── tsconfig.json
-└── src/
-    ├── types/
-    │   └── models.ts                       // TransactionItem, BudgetItem, ChartRange, ...
-    ├── utils/
-    │   ├── categories.ts                   // Color palette + variable/fixed classifier
-    │   ├── chartCalculator.ts              // Window/series math for spending trend chart
-    │   ├── date.ts                         // Pure date helpers (no third-party libs)
-    │   ├── financeCalculator.ts            // All finance rules in one testable file
-    │   └── format.ts                       // Currency + percent formatting
-    ├── state/
-    │   ├── AppState.tsx                    // React Context + reducer + persistence
-    │   ├── demoData.ts                     // Bundled student demo seed
-    │   └── storage.ts                      // AsyncStorage wrapper
-    ├── theme/
-    │   ├── tokens.ts                       // Light + dark palettes, spacing, radii
-    │   └── useTheme.ts
-    ├── navigation/
-    │   ├── RootNavigator.tsx               // Stack: Tabs + modal Quick Add
-    │   ├── TabBar.tsx                      // Custom pill nav + orange FAB
-    │   └── constants.ts
-    ├── screens/
-    │   ├── DashboardScreen.tsx             // Spend trend, plan vs reality, recent txns
-    │   ├── TransactionsScreen.tsx          // Grouped by date with filter pills
-    │   ├── BudgetScreen.tsx                // Envelope, Savings Target, bills, variable
-    │   ├── ProfileScreen.tsx               // Monthly note, savings rate, reset
-    │   └── QuickAddScreen.tsx              // Modal Add Expense/Income
-    └── components/
-        ├── BillRow.tsx                     // Fixed bill row + Mark as Paid
-        ├── BudgetEnvelopeCard.tsx
-        ├── Card.tsx
-        ├── IncomePromptDialog.tsx          // "Add this income to your budget?"
-        ├── PillBadge.tsx
-        ├── PlanVsRealityBar.tsx            // Segmented bar + expandable legend
-        ├── PrimaryButton.tsx
-        ├── SavingsTargetCard.tsx
-        ├── SpendTrendChart.tsx             // SVG chart with tooltip + projection
-        ├── SpendTrendRangePicker.tsx       // 7D / 1W / 30D / Month pill picker
-        ├── TransactionGroupList.tsx
-        └── UndoSnackbar.tsx                // 5s auto-dismiss above bottom nav
+```bash
+npx expo start --localhost --ios   # one step
 ```
 
-## Finance rules preserved from SwiftUI
+**Verify:** `npm run typecheck` · `npm test` (91 tests)
 
-- `totalIncome`, `availableToBudget`, `reserveNotBudgeted`, `totalBudgeted`
-  (fixed + variable planned only — **not** savings target dollars),
-  `budgetDifference`, `unallocatedRow`
-  (`Unallocated Budget` / `Over Budget By` using
-  `available − totalBudgeted`). Savings Target is a separate comfort goal and
-  never folds into the envelope difference.
-- `savingsTarget` = explicit override OR `desiredSavingsRate × availableToBudget`.
-- `usableBudgetAfterSavings` = `max(0, available − savings)`.
-- Variable Spending Pace: risk band ≤90% / ≤100% / >100% of variable limit.
-- Total Spending Pace: anchors at today's actual; future is only the variable
-  daily rate extrapolated + `unpaidFixedBillsRemaining`. Paying a fixed bill
-  cannot make the month-end projection worse.
-- Recurring bill statuses: `unpaid` / `partial` / `paid` based on
-  `actualPaid` vs `planned`.
-- Mark as Paid creates a transaction for the remaining amount, then schedules
-  a 5s Undo snackbar that restores the prior actual.
-- Quick Add income prompts "Add this income to your budget?" with `Add to
-  Budget`, `Keep as Reserve`, `Cancel`.
+## Current app (main)
 
-## Migrated features
-
-| Area | Status |
+| Area | What ships today |
 | --- | --- |
-| Custom bottom pill navigation + orange FAB | ✅ |
-| Dashboard with income header, spend trend, Plan vs Reality, recent txns | ✅ |
-| Transactions screen with All / Expenses / Income filters, grouped by day | ✅ |
-| Budget screen: envelope, Savings Target, bills, variable, savings goals | ✅ |
-| Profile: monthly note, override Available to Budget, savings rate/target, reset | ✅ |
-| Quick Add modal with expense/income toggle and preset categories | ✅ |
-| Variable Spending Trend chart with 7D / 1W / 30D / Month | ✅ |
-| Total Spending Trend chart (Month-only) | ✅ |
-| Tooltip contract matches iOS (Spend Limit only on the line, never in tooltip) | ✅ |
-| Light + Dark mode (driven by system) | ✅ |
-| AsyncStorage persistence (transactions, budgets, settings, note, chart mode/range) | ✅ |
-| Demo data (income, rent, phone, tuition savings, groceries, eating out, ...) | ✅ |
-| Income prompt dialog after adding income | ✅ |
-| Mark-as-Paid + 5s auto-dismiss Undo snackbar | ✅ |
-| Pure TypeScript finance/chart helpers (testable, framework-free) | ✅ |
+| **Onboarding** | 4-step first-run intro (demo data, Available to Budget) |
+| **Home** | Available to Budget hero, spend trend (variable ↔ total), plan vs reality, recent txns + See all |
+| **Quick Add** | Simple default (category + amount + date chips); Advanced for recurring/variable routing |
+| **Transactions** | All / Expenses / Income + category pills; tap to **edit**, swipe to delete + 5s undo |
+| **Budget** | Envelope, savings target, snapshot, add budget item, month breakdown pie (tap ✎ to edit), bills, variable categories |
+| **Bills** | Mark paid, edit, delete; badges **Paid / Partial / Upcoming / Overdue** |
+| **Profile** | Past months chart, monthly note, estimated breakdown disclaimer |
+| **Settings** | Theme, currency, budget warning threshold (wired to pace), JSON **export**; reminders marked Coming soon |
+| **Persistence** | `AppRepository` → AsyncStorage, schema migration v1, month rollover, deduped demo seed |
 
-## Future work (not in this pass)
+## Architecture
 
-- Auth0 sign-in / sign-up flow.
-- Node + Express + MongoDB Atlas + Mongoose backend sync (replace AsyncStorage
-  with a repository layer that mirrors the SwiftUI `PersistedState`).
-- Bank linking, receipt scanning, widgets.
-- Editing recurring bills + variable categories inside the app (current UI
-  shows the demo budget; CRUD is still local-only).
-- Unit + UI test harness (`jest-expo` + `@testing-library/react-native`).
-- Polishing icons (current tab icons use Unicode glyphs; a vector icon font
-  pass is next).
+```
+src/state/
+  AppState.tsx          Context + mutations
+  AppRepository.ts      load / save / clear (local today; remote later)
+  storage.ts            AsyncStorage + migratePersistedState + month prep
+src/utils/
+  financeCalculator.ts  Budget math (parity with Swift)
+  chartCalculator.ts    Spend trend series
+```
+
+## Finance rules (Swift parity)
+
+- Envelope: `availableToBudget`, `totalBudgeted` (fixed + variable only — savings
+  target excluded from envelope math), `unallocatedRow`.
+- Variable pace: configurable warning threshold (Settings, default 90%).
+- Total pace: projection includes unpaid fixed bills for the month.
+- Bill status: `paid` / `partial` / `upcoming` / `overdue` from due day vs today.
+
+## What's next (before Google Sign-In + MongoDB)
+
+These are the remaining gaps worth closing **on local-only** before cloud auth:
+
+1. **Push notifications** — wire bill-due / budget-warning toggles (currently Coming soon in Settings).
+2. **Accessibility** — chart text summary, VoiceOver alternative to swipe-delete.
+3. **Transaction search** — filter by text across long lists.
+4. **Savings goals UI** — `budgetType: 'savings'` exists in models; no dedicated screen yet.
+5. **Import JSON** — export exists; import/restore from Settings backup file.
+6. **Component / E2E tests** — logic covered by Vitest; no `jest-expo` UI harness yet.
+
+## After local polish → backend phase
+
+| Step | Work |
+| --- | --- |
+| 1 | **Google Sign-In** — auth screen, secure token storage, account linking |
+| 2 | **MongoDB + API** — `RemoteAppRepository`, user-scoped `PersistedState`, offline queue + conflict rules |
+| 3 | **Sync** — replace one-device AsyncStorage as source of truth for signed-in users |
+| 4 | Optional | Bank linking, receipts, widgets |
+
+`AppRepository` is intentionally in place so step 2 swaps the implementation
+without rewriting screens.
+
+## Grade snapshot (student POV)
+
+| | |
+| --- | --- |
+| **Overall** | **B+** — strong planning/analytics; solid daily use; local-only |
+| Planning & insights | A |
+| Daily logging & edits | B+ |
+| Onboarding & clarity | B |
+| Pre-backend engineering | A- |
