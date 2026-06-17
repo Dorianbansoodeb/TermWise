@@ -582,7 +582,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       monthlyNotes,
       chartMode,
       variableChartRange,
-      appUserSettings
+      appUserSettings,
+      lastDemoSeedMonthKey,
+      hasCompletedOnboarding
     };
   }, [
     transactions,
@@ -591,7 +593,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     monthlyNotes,
     chartMode,
     variableChartRange,
-    appUserSettings
+    appUserSettings,
+    lastDemoSeedMonthKey,
+    hasCompletedOnboarding
   ]);
 
   const resetToDemo = useCallback(async () => {

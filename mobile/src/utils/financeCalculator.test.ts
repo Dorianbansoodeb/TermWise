@@ -451,8 +451,6 @@ describe('profileExpenseBreakdownRows', () => {
   });
 });
 
-});
-
 describe('variableRiskStatus', () => {
   const limit = 1000;
 
