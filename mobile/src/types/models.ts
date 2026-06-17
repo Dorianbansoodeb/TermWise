@@ -174,4 +174,6 @@ export interface PersistedState {
   chartMode: ChartMode;
   variableChartRange: ChartRange;
   appUserSettings: AppUserSettings;
+  /// Month key (`YYYY-MM`) when demo transactions were last appended for rollover seeding.
+  lastDemoSeedMonthKey?: string;
 }

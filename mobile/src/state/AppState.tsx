@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState
 } from 'react';
+import { AppState as RNAppState } from 'react-native';
 import type {
   AppUserSettings,
   BudgetItem,
@@ -110,7 +111,7 @@ const UNDO_DURATION_MS = 5000;
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [isHydrated, setHydrated] = useState(false);
-  const [referenceDate] = useState<Date>(() => new Date());
+  const [referenceDate, setReferenceDate] = useState<Date>(() => new Date());
 
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
@@ -122,7 +123,32 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [variableChartRange, setVariableChartRangeState] = useState<ChartRange>('currentMonth');
   const [appUserSettings, setAppUserSettings] = useState(() => mergeAppUserSettings(undefined));
   const appUserSettingsRef = useRef(appUserSettings);
+  const [lastDemoSeedMonthKey, setLastDemoSeedMonthKey] = useState<string | undefined>(undefined);
   appUserSettingsRef.current = appUserSettings;
+
+  const persistedSnapshotRef = useRef({
+    transactions,
+    budgetItems,
+    monthlySettingsByMonth,
+    monthlyNotes,
+    chartMode,
+    variableChartRange,
+    appUserSettings,
+    lastDemoSeedMonthKey
+  });
+  persistedSnapshotRef.current = {
+    transactions,
+    budgetItems,
+    monthlySettingsByMonth,
+    monthlyNotes,
+    chartMode,
+    variableChartRange,
+    appUserSettings,
+    lastDemoSeedMonthKey
+  };
+
+  const referenceDateRef = useRef(referenceDate);
+  referenceDateRef.current = referenceDate;
 
   const [pendingIncomePrompt, setPendingIncomePrompt] = useState<PendingIncomePrompt | null>(null);
   const [pendingUndoBar, setPendingUndoBar] = useState<PendingUndoBar | null>(null);
@@ -163,7 +189,40 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setChartModeState(state.chartMode);
     setVariableChartRangeState(state.variableChartRange);
     setAppUserSettings(mergeAppUserSettings(state.appUserSettings));
+    setLastDemoSeedMonthKey(state.lastDemoSeedMonthKey);
   }
+
+  const applyMonthRollover = useCallback((now: Date) => {
+    const prepared = prepareStateForReferenceMonth(
+      {
+        schemaVersion: 1,
+        ...persistedSnapshotRef.current
+      },
+      now
+    );
+    applyPersistedState(prepared);
+    setReferenceDate(now);
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    const checkMonthRollover = () => {
+      const now = new Date();
+      if (monthKey(referenceDateRef.current) === monthKey(now)) return;
+      applyMonthRollover(now);
+    };
+
+    const intervalId = setInterval(checkMonthRollover, 60_000);
+    const subscription = RNAppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') checkMonthRollover();
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      subscription.remove();
+    };
+  }, [isHydrated, applyMonthRollover]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -175,7 +234,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       monthlyNotes,
       chartMode,
       variableChartRange,
-      appUserSettings
+      appUserSettings,
+      lastDemoSeedMonthKey
     };
     savePersistedState(snapshot);
   }, [
@@ -186,7 +246,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     monthlyNotes,
     chartMode,
     variableChartRange,
-    appUserSettings
+    appUserSettings,
+    lastDemoSeedMonthKey
   ]);
 
   // MARK: settings helpers
@@ -466,6 +527,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setChartModeState(next.chartMode);
     setVariableChartRangeState(next.variableChartRange);
     setAppUserSettings(kept);
+    setLastDemoSeedMonthKey(next.lastDemoSeedMonthKey);
+    setReferenceDate(new Date());
     await savePersistedState({
       schemaVersion: 1,
       transactions: next.transactions,
@@ -474,7 +537,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       monthlyNotes: next.monthlyNotes,
       chartMode: next.chartMode,
       variableChartRange: next.variableChartRange,
-      appUserSettings: kept
+      appUserSettings: kept,
+      lastDemoSeedMonthKey: next.lastDemoSeedMonthKey
     });
   }, []);
 
