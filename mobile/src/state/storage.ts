@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ChartRange, PersistedState } from '../types/models';
+import { buildDemoState } from './demoData';
+import { isSameMonth, monthKey, parseCalendarDate } from '../utils/date';
 import { mergeAppUserSettings } from '../utils/appUserSettings';
 
 const STORAGE_KEY = '@termwise/persisted-state-v1';
@@ -10,6 +12,34 @@ function normalizeVariableChartRange(value: unknown): ChartRange {
   if (value === 'thirtyDays') return 'thirtyDays';
   if (value === 'currentMonth') return 'currentMonth';
   return 'currentMonth';
+}
+
+/// When persisted demo data is from a prior month, seed the current month so
+/// charts and dashboard math have expenses/income to plot.
+export function prepareStateForReferenceMonth(
+  state: PersistedState,
+  referenceDate: Date
+): PersistedState {
+  const mk = monthKey(referenceDate);
+  const hasExpenseThisMonth = state.transactions.some(
+    (t) => t.type === 'expense' && isSameMonth(parseCalendarDate(t.date), referenceDate)
+  );
+  let transactions = state.transactions;
+  if (!hasExpenseThisMonth && state.transactions.some((t) => t.type === 'expense')) {
+    const demo = buildDemoState(referenceDate);
+    transactions = [...state.transactions, ...demo.transactions];
+  }
+
+  const monthlySettingsByMonth = { ...state.monthlySettingsByMonth };
+  if (!monthlySettingsByMonth[mk]) {
+    monthlySettingsByMonth[mk] = {
+      monthKey: mk,
+      availableToBudget: 2300,
+      desiredSavingsRate: 0.15
+    };
+  }
+
+  return { ...state, transactions, monthlySettingsByMonth };
 }
 
 export async function loadPersistedState(): Promise<PersistedState | null> {

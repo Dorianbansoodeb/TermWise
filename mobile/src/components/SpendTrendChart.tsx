@@ -111,6 +111,35 @@ export function SpendTrendChart({ series, height = 220 }: SpendTrendChartProps) 
   });
   const gesture = Gesture.Simultaneous(panGesture, tap);
 
+  const limitLabelYs = useMemo(() => {
+    const minGap = 13;
+    const entries = series.limitLines.map((line, idx) => ({
+      idx,
+      anchorY: yForValue(line.value) - 4
+    }));
+    entries.sort((a, b) => a.anchorY - b.anchorY);
+    const ys = new Array<number>(series.limitLines.length).fill(0);
+    let prevY = margin.top + 4;
+    for (const entry of entries) {
+      let y = Math.max(margin.top + 10, entry.anchorY);
+      if (y - prevY < minGap) y = prevY + minGap;
+      ys[entry.idx] = y;
+      prevY = y;
+    }
+    return ys;
+  }, [series.limitLines, innerH, innerW, dataMax, margin.top]);
+
+  const limitLineColor = (role: ChartSeries['limitLines'][number]['role']) => {
+    switch (role) {
+      case 'spendLimit':
+        return theme.positive;
+      case 'available':
+      case 'variableLimit':
+      default:
+        return theme.chartLimit;
+    }
+  };
+
   return (
     <View style={[styles.container, { height }]} onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
@@ -122,6 +151,8 @@ export function SpendTrendChart({ series, height = 220 }: SpendTrendChartProps) 
               {/* Limit / Available lines */}
               {series.limitLines.map((line, idx) => {
                 const y = yForValue(line.value);
+                const stroke = limitLineColor(line.role);
+                const labelY = limitLabelYs[idx] ?? Math.max(margin.top + 10, y - 4);
                 return (
                   <React.Fragment key={`${line.label}-${idx}`}>
                     <Line
@@ -129,19 +160,19 @@ export function SpendTrendChart({ series, height = 220 }: SpendTrendChartProps) 
                       x2={margin.left + innerW}
                       y1={y}
                       y2={y}
-                      stroke={line.color}
+                      stroke={stroke}
                       strokeWidth={1}
                       strokeDasharray={line.dashed ? '6 4' : undefined}
                     />
                     <SvgText
                       x={margin.left + innerW - 4}
-                      y={Math.max(margin.top + 10, y - 4)}
-                      fill={line.color}
+                      y={labelY}
+                      fill={stroke}
                       fontSize={10}
                       fontWeight="600"
                       textAnchor="end"
                     >
-                      {line.label}
+                      {`${line.label} ${formatMoney(line.value, { compact: true })}`}
                     </SvgText>
                   </React.Fragment>
                 );

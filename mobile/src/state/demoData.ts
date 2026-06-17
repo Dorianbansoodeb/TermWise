@@ -5,7 +5,7 @@ import type {
   TransactionItem
 } from '../types/models';
 import { DEFAULT_APP_USER_SETTINGS } from '../types/models';
-import { addDays, dayKey, monthKey } from '../utils/date';
+import { addDays, dayKey, monthKey, calendarDateISO } from '../utils/date';
 
 function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -18,7 +18,7 @@ function uuid(): string {
 function isoForDay(now: Date, dayOffset: number, hour = 10, minute = 0): string {
   const d = addDays(now, dayOffset);
   d.setHours(hour, minute, 0, 0);
-  return d.toISOString();
+  return calendarDateISO(d);
 }
 
 /// Build a realistic student demo snapshot anchored at `now`. Spread across

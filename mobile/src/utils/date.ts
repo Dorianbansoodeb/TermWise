@@ -75,6 +75,30 @@ export function parseDate(value: string | Date): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+/// Calendar day for persisted ISO strings — avoids UTC midnight shifting the local date.
+export function parseCalendarDate(value: string | Date): Date {
+  if (value instanceof Date) return startOfDay(value);
+  const isoDay = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (isoDay) {
+    return new Date(
+      Number(isoDay[1]),
+      Number(isoDay[2]) - 1,
+      Number(isoDay[3]),
+      12,
+      0,
+      0,
+      0
+    );
+  }
+  return startOfDay(new Date(value));
+}
+
+/// Stable local calendar timestamp for demo seeds and new transactions.
+export function calendarDateISO(date: Date): string {
+  const d = startOfDay(date);
+  return `${dayKey(d)}T12:00:00.000`;
+}
+
 /// "Today", "Yesterday", or "Mon, May 12" — same vibe as iOS dashboard grouping.
 export function relativeDayLabel(date: Date, now: Date = new Date()): string {
   if (isSameDay(date, now)) return 'Today';

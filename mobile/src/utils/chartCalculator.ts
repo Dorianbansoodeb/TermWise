@@ -10,7 +10,7 @@ import type {
   MonthlySettings,
   TransactionItem
 } from '../types/models';
-import { addDays, isSameDay, parseDate, startOfDay } from './date';
+import { addDays, isSameDay, parseCalendarDate, startOfDay } from './date';
 import {
   evaluateTotalPace,
   evaluateVariablePace,
@@ -115,32 +115,35 @@ function cumulativePerSlot(
   slots: Date[],
   todayIdx: number
 ): number[] {
-  const slotIndex = new Map<string, number>();
-  slots.forEach((d, idx) => {
-    slotIndex.set(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`, idx);
-  });
-  const daily = new Array<number>(slots.length).fill(0);
-  for (const txn of txns) {
-    if (txn.type !== 'expense') continue;
-    const d = parseDate(txn.date);
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    const idx = slotIndex.get(key);
-    if (idx === undefined) continue;
-    daily[idx] = (daily[idx] ?? 0) + netExpenseAmount(txn);
-  }
-  const cum = new Array<number>(slots.length).fill(0);
+  const n = slots.length;
+  if (n === 0) return [];
+
+  const todaySlot0 = Math.max(0, Math.min(n - 1, todayIdx - 1));
+  const cum = new Array<number>(n).fill(0);
   let running = 0;
-  const lastIdx = Math.min(todayIdx, slots.length);
-  for (let i = 0; i < lastIdx; i++) {
-    running += daily[i] ?? 0;
+
+  for (let i = 0; i < n; i++) {
+    if (i <= todaySlot0) {
+      const day = slots[i]!;
+      const daySpend = txns
+        .filter(
+          (t) =>
+            t.type === 'expense' &&
+            isSameDay(startOfDay(parseCalendarDate(t.date)), startOfDay(day))
+        )
+        .reduce((sum, t) => sum + netExpenseAmount(t), 0);
+      running += daySpend;
+    }
     cum[i] = running;
   }
-  // Future slots intentionally repeat the last actual value so the line does
-  // not jump down — the chart hides them visually anyway (parity with iOS
-  // `SpendingSeries.cumulativeSpendPerDaySlot`).
-  for (let i = lastIdx; i < slots.length; i++) {
-    cum[i] = running;
+
+  if (todayIdx > 0 && todayIdx < n) {
+    const plateau = cum[todayIdx - 1] ?? running;
+    for (let i = todayIdx; i < n; i++) {
+      cum[i] = plateau;
+    }
   }
+
   return cum;
 }
 
@@ -200,6 +203,8 @@ export interface ChartLimitLine {
   color: string;
   /** dashed when true */
   dashed: boolean;
+  /** Theme mapping in the chart renderer */
+  role: 'available' | 'spendLimit' | 'variableLimit';
 }
 
 export function buildChartSeries(args: {
@@ -263,12 +268,13 @@ export function buildChartSeries(args: {
     drawsProjectionLine = !isTrailingShortRange(effectiveRange);
     limitLines = [
       {
-        label: `Limit ${formatDollars(scaled.periodVariableLimit)}`,
+        label: 'Limit',
         value: scaled.periodVariableLimit,
         color: '#94a3b8',
-        dashed: true
+        dashed: true,
+        role: 'variableLimit' as const
       }
-    ];
+    ].filter((line) => line.value > 0);
   } else {
     actualCumulative = cumulativeTotalSpendPerDaySlot({
       transactions: args.transactions,
@@ -281,18 +287,20 @@ export function buildChartSeries(args: {
     drawsProjectionLine = true;
     limitLines = [
       {
-        label: `Available ${formatDollars(scaled.periodAvailableToBudget)}`,
+        label: 'Available',
         value: scaled.periodAvailableToBudget,
         color: '#94a3b8',
-        dashed: true
+        dashed: true,
+        role: 'available' as const
       },
       {
-        label: `Spend Limit ${formatDollars(scaled.periodSpendLimit)}`,
+        label: 'Spend Limit',
         value: scaled.periodSpendLimit,
         color: '#22c55e',
-        dashed: false
+        dashed: false,
+        role: 'spendLimit' as const
       }
-    ];
+    ].filter((line) => line.value > 0);
   }
 
   const isEmpty =
@@ -313,11 +321,6 @@ export function buildChartSeries(args: {
     scaled,
     isEmpty
   };
-}
-
-function formatDollars(value: number): string {
-  if (!Number.isFinite(value)) return '$0';
-  return `$${Math.round(value).toLocaleString('en-US')}`;
 }
 
 // MARK: - Tooltip row builder

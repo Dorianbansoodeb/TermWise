@@ -19,7 +19,7 @@ import type {
   TransactionItem
 } from '../types/models';
 import { buildDemoState } from './demoData';
-import { loadPersistedState, savePersistedState } from './storage';
+import { loadPersistedState, prepareStateForReferenceMonth, savePersistedState } from './storage';
 import { monthKey } from '../utils/date';
 import { mergeAppUserSettings } from '../utils/appUserSettings';
 import { formatCurrencyWith } from '../utils/format';
@@ -136,10 +136,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     (async () => {
       const stored = await loadPersistedState();
-      const initial = stored ?? buildDemoState(referenceDate);
+      const base = stored ?? buildDemoState(referenceDate);
+      const initial = prepareStateForReferenceMonth(base, referenceDate);
       if (cancelled) return;
       applyPersistedState(initial);
-      if (!stored) {
+      const migrated =
+        !!stored &&
+        (initial.transactions.length !== stored.transactions.length ||
+          Object.keys(initial.monthlySettingsByMonth).length !==
+            Object.keys(stored.monthlySettingsByMonth).length);
+      if (!stored || migrated) {
         await savePersistedState(initial);
       }
       setHydrated(true);
