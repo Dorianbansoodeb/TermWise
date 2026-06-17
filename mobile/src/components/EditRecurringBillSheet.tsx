@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -25,6 +26,7 @@ interface EditRecurringBillSheetProps {
     dueDay: number | undefined;
     frequency: PaymentFrequency;
   }) => void;
+  onDelete: () => void;
 }
 
 const FREQ_OPTIONS: { value: PaymentFrequency; label: string }[] = [
@@ -42,7 +44,8 @@ export function EditRecurringBillSheet({
   visible,
   item,
   onCancel,
-  onSave
+  onSave,
+  onDelete
 }: EditRecurringBillSheetProps) {
   const theme = useTheme();
   const [name, setName] = useState('');
@@ -179,6 +182,21 @@ export function EditRecurringBillSheet({
                 );
               })}
             </View>
+
+            <PrimaryButton
+              title="Delete Bill"
+              variant="danger"
+              onPress={() => {
+                Alert.alert(
+                  'Delete recurring bill?',
+                  'This removes the bill from your budget plan. Recorded payments stay in your transaction history.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Delete', style: 'destructive', onPress: onDelete }
+                  ]
+                );
+              }}
+            />
 
             <View style={styles.actions}>
               <PrimaryButton

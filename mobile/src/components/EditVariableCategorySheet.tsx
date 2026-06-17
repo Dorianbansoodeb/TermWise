@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -19,6 +20,7 @@ interface EditVariableCategorySheetProps {
   item: BudgetItem | null;
   onCancel: () => void;
   onSave: (patch: { category: string; planned: number }) => void;
+  onDelete: () => void;
 }
 
 /// Modal sheet for editing a Variable Spending category. Currently exposes
@@ -29,7 +31,8 @@ export function EditVariableCategorySheet({
   visible,
   item,
   onCancel,
-  onSave
+  onSave,
+  onDelete
 }: EditVariableCategorySheetProps) {
   const theme = useTheme();
   const [name, setName] = useState('');
@@ -93,6 +96,21 @@ export function EditVariableCategorySheet({
                 backgroundColor: theme.surface
               }
             ]}
+          />
+
+          <PrimaryButton
+            title="Delete Category"
+            variant="danger"
+            onPress={() => {
+              Alert.alert(
+                'Delete variable category?',
+                'This removes the category from your budget plan. Past transactions keep their category label.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: onDelete }
+                ]
+              );
+            }}
           />
 
           <View style={styles.actions}>
