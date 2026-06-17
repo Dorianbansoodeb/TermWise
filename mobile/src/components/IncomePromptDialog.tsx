@@ -11,7 +11,13 @@ export function IncomePromptDialog() {
   if (!pendingIncomePrompt) return null;
 
   return (
-    <Modal transparent visible animationType="fade" onRequestClose={() => resolveIncomePrompt('cancel')}>
+    <Modal
+      transparent
+      visible
+      animationType="fade"
+      accessibilityViewIsModal
+      onRequestClose={() => resolveIncomePrompt('cancel')}
+    >
       <View style={styles.overlay}>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.title, { color: theme.text }]}>Add this income to your budget?</Text>
