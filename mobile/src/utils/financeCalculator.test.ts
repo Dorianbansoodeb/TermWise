@@ -3,9 +3,14 @@ import type { BudgetItem, TransactionItem } from '../types/models';
 import {
   actualPaidForBill,
   actualSpentForCategory,
+  availableToBudgetForMonth,
   budgetDifference,
   budgetPercentUsed,
+  computeSpendingBreakdown,
+  evaluateTotalPace,
+  evaluateVariablePace,
   findFixedBillForCategory,
+  groupTransactionsByDay,
   profileExpenseBreakdownRows,
   profileMonthSummaries,
   recurringBillsForMonth,
@@ -411,5 +416,261 @@ describe('profileExpenseBreakdownRows', () => {
     const rows = profileExpenseBreakdownRows(items, 100, 80);
     expect(rows).toHaveLength(1);
     expect(rows[0].category).toBe('Rent');
+  });
+});
+
+// --- Available to Budget ---
+
+const mkIncome = (
+  id: string,
+  category: string,
+  amount: number,
+  isoDate: string
+): TransactionItem => ({
+  id,
+  amount,
+  name: category,
+  category,
+  note: '',
+  date: isoDate,
+  createdAt: isoDate,
+  type: 'income',
+  undoable: false
+});
+
+describe('availableToBudgetForMonth', () => {
+  it('defaults to total income when no monthly override exists', () => {
+    const txns: TransactionItem[] = [
+      mkIncome('i1', 'Paycheque', 1020, '2026-05-01T09:00:00Z'),
+      mkIncome('i2', 'Gift', 200, '2026-05-10T09:00:00Z'),
+      mkIncome('i3', 'Old pay', 500, '2026-04-15T09:00:00Z')
+    ];
+    expect(availableToBudgetForMonth(txns, undefined, REF)).toBe(1220);
+  });
+
+  it('uses the explicit override from monthly settings', () => {
+    const txns: TransactionItem[] = [mkIncome('i1', 'Paycheque', 2000, '2026-05-01T09:00:00Z')];
+    expect(
+      availableToBudgetForMonth(txns, { monthKey: '2026-05', availableToBudget: 800 }, REF)
+    ).toBe(800);
+  });
+
+  it('clamps a negative override to zero', () => {
+    const txns: TransactionItem[] = [mkIncome('i1', 'Paycheque', 1000, '2026-05-01T09:00:00Z')];
+    expect(
+      availableToBudgetForMonth(txns, { monthKey: '2026-05', availableToBudget: -50 }, REF)
+    ).toBe(0);
+  });
+});
+
+// --- Variable / total spending pace ---
+
+describe('evaluateVariablePace', () => {
+  const budgetItems: BudgetItem[] = [mkVar('g', 'Groceries', 1000)];
+
+  it('projects month-end spend as (spent / daysElapsed) × daysInMonth', () => {
+    const txns = [1, 2, 3, 4, 5].map((day) =>
+      mkExpense(`g${day}`, 'Groceries', 100, `2026-05-${String(day).padStart(2, '0')}T10:00:00Z`)
+    );
+    const result = evaluateVariablePace({
+      budgetItems,
+      transactions: txns,
+      currentDayOfMonth: 5,
+      daysInMonth: 30,
+      referenceDate: new Date('2026-05-05T12:00:00.000Z')
+    });
+    expect(result.variableBudget).toBe(1000);
+    expect(result.variableSpent).toBe(500);
+    expect(result.projectedMonthEndSpend).toBeCloseTo((500 / 5) * 30, 5);
+    expect(result.expectedSpentByToday).toBeCloseTo(1000 * (5 / 30), 5);
+  });
+
+  it('flags overBudgetRisk when projected burn exceeds the variable budget', () => {
+    const txns = [mkExpense('g1', 'Groceries', 400, '2026-05-02T10:00:00Z')];
+    const result = evaluateVariablePace({
+      budgetItems: [mkVar('g', 'Groceries', 500)],
+      transactions: txns,
+      currentDayOfMonth: 5,
+      daysInMonth: 31,
+      referenceDate: REF
+    });
+    expect(result.variableSpent).toBeLessThan(result.variableBudget);
+    expect(result.projectedMonthEndSpend).toBeGreaterThan(result.variableBudget);
+    expect(result.status).toBe('overBudgetRisk');
+  });
+
+  it('stays onTrack when projected spend is within 90% of the variable budget', () => {
+    const txns = [mkExpense('g1', 'Groceries', 50, '2026-05-03T10:00:00Z')];
+    const result = evaluateVariablePace({
+      budgetItems: [mkVar('g', 'Groceries', 600)],
+      transactions: txns,
+      currentDayOfMonth: 15,
+      daysInMonth: 30,
+      referenceDate: REF
+    });
+    expect(result.status).toBe('onTrack');
+  });
+});
+
+describe('evaluateTotalPace', () => {
+  it('expectedSpentByToday pro-rates the spend limit across the month', () => {
+    const result = evaluateTotalPace({
+      transactions: [],
+      budgetItems: [],
+      availableToBudget: 1000,
+      savingsTarget: 150,
+      currentDayOfMonth: 15,
+      daysInMonth: 30,
+      referenceDate: REF
+    });
+    expect(result.spendLimit).toBe(850);
+    expect(result.expectedSpentByToday).toBeCloseTo(425, 5);
+  });
+
+  it('totalSpent includes fixed and variable expenses in the current month', () => {
+    const budgetItems: BudgetItem[] = [
+      mkFixed('rent', 'Rent', 900),
+      mkVar('g', 'Groceries', 280)
+    ];
+    const txns: TransactionItem[] = [
+      mkExpense('r', 'Rent', 900, '2026-05-01T10:00:00Z'),
+      mkExpense('g', 'Groceries', 60, '2026-05-03T10:00:00Z'),
+      mkExpense('p', 'Phone', 35, '2026-05-04T10:00:00Z')
+    ];
+    const result = evaluateTotalPace({
+      transactions: txns,
+      budgetItems,
+      availableToBudget: 2000,
+      savingsTarget: 0,
+      currentDayOfMonth: 15,
+      daysInMonth: 31,
+      referenceDate: REF
+    });
+    expect(result.totalSpent).toBe(995);
+    expect(result.variableSpentSoFar).toBe(60);
+  });
+
+  it('reports onTrack when projected month-end stays within the spend limit', () => {
+    const result = evaluateTotalPace({
+      transactions: [mkExpense('g', 'Groceries', 40, '2026-05-04T10:00:00Z')],
+      budgetItems: [mkVar('g', 'Groceries', 500)],
+      availableToBudget: 2000,
+      savingsTarget: 200,
+      currentDayOfMonth: 10,
+      daysInMonth: 30,
+      referenceDate: REF
+    });
+    expect(result.spendLimit).toBe(1800);
+    expect(result.status).toBe('onTrack');
+  });
+});
+
+// --- Transaction grouping ---
+
+const mkExpenseAt = (
+  id: string,
+  category: string,
+  amount: number,
+  isoDate: string,
+  createdAt: string
+): TransactionItem => ({
+  ...mkExpense(id, category, amount, isoDate),
+  createdAt
+});
+
+describe('groupTransactionsByDay', () => {
+  it('groups transactions by calendar day', () => {
+    const txns: TransactionItem[] = [
+      mkIncome('i1', 'Paycheque', 2000, '2026-05-01T09:00:00Z'),
+      mkExpense('e1', 'Groceries', 50, '2026-05-01T18:00:00Z'),
+      mkExpense('e2', 'Eating Out', 30, '2026-05-04T12:00:00Z')
+    ];
+    const groups = groupTransactionsByDay(txns);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].dayKey).toBe('2026-05-04');
+    expect(groups[0].transactions).toHaveLength(1);
+    expect(groups[1].dayKey).toBe('2026-05-01');
+    expect(groups[1].transactions).toHaveLength(2);
+    expect(groups[1].total).toBe(2050);
+  });
+
+  it('sorts day groups newest-first by dayKey', () => {
+    const txns: TransactionItem[] = [
+      mkExpense('a', 'X', 10, '2026-05-01T10:00:00Z'),
+      mkExpense('b', 'X', 10, '2026-05-05T10:00:00Z'),
+      mkExpense('c', 'X', 10, '2026-05-03T10:00:00Z')
+    ];
+    expect(groupTransactionsByDay(txns).map((g) => g.dayKey)).toEqual([
+      '2026-05-05',
+      '2026-05-03',
+      '2026-05-01'
+    ]);
+  });
+
+  it('sorts transactions within a day by createdAt, newest first', () => {
+    const txns: TransactionItem[] = [
+      mkExpenseAt('a', 'Coffee', 5, '2026-05-02T07:00:00Z', '2026-05-02T07:00:00Z'),
+      mkExpenseAt('b', 'Dinner', 25, '2026-05-02T19:00:00Z', '2026-05-02T19:00:00Z'),
+      mkExpenseAt('c', 'Lunch', 12, '2026-05-02T12:00:00Z', '2026-05-02T12:00:00Z')
+    ];
+    const group = groupTransactionsByDay(txns)[0];
+    expect(group.transactions.map((t) => t.category)).toEqual(['Dinner', 'Lunch', 'Coffee']);
+  });
+});
+
+// --- Plan vs Reality spending breakdown ---
+
+describe('computeSpendingBreakdown', () => {
+  it('ignores income and only counts current-month expenses', () => {
+    const txns: TransactionItem[] = [
+      mkIncome('i1', 'Paycheque', 2000, '2026-05-01T09:00:00Z'),
+      mkExpense('g', 'Groceries', 100, '2026-05-03T10:00:00Z'),
+      mkExpense('r', 'Rent', 999, '2026-04-30T10:00:00Z')
+    ];
+    const result = computeSpendingBreakdown({
+      transactions: txns,
+      availableToBudget: 1000,
+      referenceDate: REF
+    });
+    expect(result.segments).toHaveLength(1);
+    expect(result.segments[0].category).toBe('Groceries');
+    expect(result.actualTotal).toBe(100);
+    expect(result.isOver).toBe(false);
+  });
+
+  it('uses net expense (amount − savedApplied) and drops zero-net rows', () => {
+    const txns: TransactionItem[] = [
+      {
+        ...mkExpense('p', 'Phone bill', 100, '2026-05-04T10:00:00Z'),
+        savedApplied: 100
+      },
+      mkExpense('e', 'Eating Out', 30, '2026-05-06T10:00:00Z')
+    ];
+    const result = computeSpendingBreakdown({
+      transactions: txns,
+      availableToBudget: 200,
+      referenceDate: REF
+    });
+    expect(result.segments).toHaveLength(1);
+    expect(result.segments[0].category).toBe('Eating Out');
+    expect(result.actualTotal).toBe(30);
+  });
+
+  it('sorts segments by amount descending and flags over-budget spend', () => {
+    const txns: TransactionItem[] = [
+      mkExpense('e', 'Eating Out', 100, '2026-05-03T10:00:00Z'),
+      mkExpense('r', 'Rent', 200, '2026-05-01T10:00:00Z'),
+      mkExpense('g', 'Groceries', 100, '2026-05-05T10:00:00Z')
+    ];
+    const result = computeSpendingBreakdown({
+      transactions: txns,
+      availableToBudget: 300,
+      referenceDate: REF
+    });
+    expect(result.segments.map((s) => s.category)).toEqual(['Rent', 'Eating Out', 'Groceries']);
+    expect(result.actualTotal).toBe(400);
+    expect(result.isOver).toBe(true);
+    expect(result.overBudgetByAmount).toBe(100);
+    expect(result.segments[0].fractionOfAvailable).toBeCloseTo(200 / 300, 5);
   });
 });
