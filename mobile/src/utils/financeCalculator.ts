@@ -330,13 +330,15 @@ export function variableSpent(
   );
 }
 
-/// Risk thresholds match SwiftUI: <=90% → onTrack, <=100% → watch, >100% → over.
+/// Risk thresholds: <=warningThreshold% → onTrack, <=100% → watch, >100% → over.
 export function variableRiskStatus(
   projectedSpend: number,
-  variableBudgetLimit: number
+  variableBudgetLimit: number,
+  warningThresholdPercent = 90
 ): VariableRiskStatus {
   if (variableBudgetLimit <= 0) return 'onTrack';
-  if (projectedSpend <= variableBudgetLimit * 0.9) return 'onTrack';
+  const threshold = Math.min(100, Math.max(1, warningThresholdPercent)) / 100;
+  if (projectedSpend <= variableBudgetLimit * threshold) return 'onTrack';
   if (projectedSpend <= variableBudgetLimit) return 'watch';
   return 'overBudgetRisk';
 }
@@ -347,6 +349,7 @@ export function evaluateVariablePace(args: {
   currentDayOfMonth: number;
   daysInMonth: number;
   referenceDate: Date;
+  warningThresholdPercent?: number;
 }): VariablePaceResult {
   const budget = variableBudget(args.budgetItems);
   const spent = variableSpent(args.transactions, args.budgetItems, args.referenceDate);
@@ -359,7 +362,7 @@ export function evaluateVariablePace(args: {
     variableSpent: spent,
     expectedSpentByToday: expected,
     projectedMonthEndSpend: projected,
-    status: variableRiskStatus(projected, budget)
+    status: variableRiskStatus(projected, budget, args.warningThresholdPercent)
   };
 }
 

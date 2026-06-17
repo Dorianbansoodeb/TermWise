@@ -42,6 +42,7 @@ export function DashboardScreen({ onNavigateToTransactions }: DashboardScreenPro
     setChartMode,
     setVariableChartRange,
     referenceDate,
+    appUserSettings,
     removeTransaction,
     updateTransaction,
     formatMoney
@@ -57,7 +58,8 @@ export function DashboardScreen({ onNavigateToTransactions }: DashboardScreenPro
     transactions,
     currentDayOfMonth: ctx.currentDayOfMonth,
     daysInMonth: ctx.daysInMonth,
-    referenceDate
+    referenceDate,
+    warningThresholdPercent: appUserSettings.budgetWarningThresholdPercent
   });
   const totalPace = evaluateTotalPace({
     transactions,

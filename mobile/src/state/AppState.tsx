@@ -109,6 +109,8 @@ export interface AppContextValue {
   resetToDemo(): Promise<void>;
   /** Marks first-run onboarding complete and persists. */
   completeOnboarding(): void;
+  /** Full on-device snapshot for export / backup. */
+  exportSnapshot(): PersistedState;
 
   // Transient UI
   pendingIncomePrompt: PendingIncomePrompt | null;
@@ -571,6 +573,27 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [appUserSettings.defaultCurrency]
   );
 
+  const exportSnapshot = useCallback((): PersistedState => {
+    return {
+      schemaVersion: 1,
+      transactions,
+      budgetItems,
+      monthlySettingsByMonth,
+      monthlyNotes,
+      chartMode,
+      variableChartRange,
+      appUserSettings
+    };
+  }, [
+    transactions,
+    budgetItems,
+    monthlySettingsByMonth,
+    monthlyNotes,
+    chartMode,
+    variableChartRange,
+    appUserSettings
+  ]);
+
   const resetToDemo = useCallback(async () => {
     const next = buildDemoState(new Date());
     const kept = appUserSettingsRef.current;
@@ -634,6 +657,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     dismissUndoBar,
     resetToDemo,
     completeOnboarding,
+    exportSnapshot,
     pendingIncomePrompt,
     pendingUndoBar
   };
