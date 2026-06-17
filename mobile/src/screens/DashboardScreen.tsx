@@ -20,7 +20,9 @@ import { PlanVsRealityBar } from '../components/PlanVsRealityBar';
 import { SpendTrendChart } from '../components/SpendTrendChart';
 import { SpendTrendRangePicker } from '../components/SpendTrendRangePicker';
 import { TransactionGroupList } from '../components/TransactionGroupList';
+import { EditTransactionSheet } from '../components/EditTransactionSheet';
 import { buildChartSeries } from '../utils/chartCalculator';
+import type { TransactionItem } from '../types/models';
 
 export function DashboardScreen() {
   const theme = useTheme();
@@ -37,8 +39,11 @@ export function DashboardScreen() {
     setVariableChartRange,
     referenceDate,
     removeTransaction,
+    updateTransaction,
     formatMoney
   } = useAppState();
+
+  const [editingTransaction, setEditingTransaction] = useState<TransactionItem | null>(null);
 
   const ctx = monthContext(referenceDate);
   const totalIncome = totalIncomeThisMonth(transactions, referenceDate);
@@ -207,14 +212,25 @@ export function DashboardScreen() {
         <View>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Transactions</Text>
           <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
-            Swipe left on a row to delete. Undo is available for 5 seconds.
+            Tap a row to edit. Swipe left to delete. Undo is available for 5 seconds.
           </Text>
           <TransactionGroupList
             groups={recentGroups}
+            onEdit={setEditingTransaction}
             onRemove={(txn) => removeTransaction(txn.id, { withUndo: true })}
           />
         </View>
       </ScrollView>
+
+      <EditTransactionSheet
+        visible={editingTransaction !== null}
+        transaction={editingTransaction}
+        onCancel={() => setEditingTransaction(null)}
+        onSave={(patch) => {
+          if (editingTransaction) updateTransaction(editingTransaction.id, patch);
+          setEditingTransaction(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
