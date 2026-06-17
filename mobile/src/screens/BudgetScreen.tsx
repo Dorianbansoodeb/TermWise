@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
@@ -52,6 +52,23 @@ export function BudgetScreen() {
   );
 
   const variableItems = budgetItems.filter((b) => b.budgetType === 'variable');
+
+  const onResetDemo = () => {
+    Alert.alert(
+      'Reset demo data?',
+      'This replaces your local budget and transactions with the built-in demo snapshot.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            await resetToDemo();
+          }
+        }
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
@@ -150,7 +167,7 @@ export function BudgetScreen() {
           <Text style={[styles.helper, { color: theme.textMuted }]}>
             Reset the local snapshot to the bundled student demo. This clears AsyncStorage.
           </Text>
-          <PrimaryButton title="Reset to Demo Data" variant="danger" onPress={resetToDemo} />
+          <PrimaryButton title="Reset to Demo Data" variant="danger" onPress={onResetDemo} />
         </Card>
       </ScrollView>
 
