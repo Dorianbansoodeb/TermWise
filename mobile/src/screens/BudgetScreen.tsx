@@ -34,6 +34,7 @@ export function BudgetScreen() {
     markBillAsPaid,
     updateBudgetItem,
     addBudgetItem,
+    removeBudgetItem,
     referenceDate,
     setAvailableToBudget,
     setSavingsTarget,
@@ -168,6 +169,10 @@ export function BudgetScreen() {
           if (editingVariableId) updateBudgetItem(editingVariableId, patch);
           setEditingVariableId(null);
         }}
+        onDelete={() => {
+          if (editingVariableId) removeBudgetItem(editingVariableId);
+          setEditingVariableId(null);
+        }}
       />
 
       <EditRecurringBillSheet
@@ -176,6 +181,10 @@ export function BudgetScreen() {
         onCancel={() => setEditingBillId(null)}
         onSave={(patch) => {
           if (editingBillId) updateBudgetItem(editingBillId, patch);
+          setEditingBillId(null);
+        }}
+        onDelete={() => {
+          if (editingBillId) removeBudgetItem(editingBillId);
           setEditingBillId(null);
         }}
       />

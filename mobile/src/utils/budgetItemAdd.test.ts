@@ -99,3 +99,34 @@ describe('budgetItemAdd flow', () => {
     expect(r.ok).toBe(false);
   });
 });
+
+function removeBudgetItemFromList(items: BudgetItem[], id: string): BudgetItem[] {
+  return items.filter((item) => item.id !== id);
+}
+
+describe('budget item removal', () => {
+  const base: BudgetItem[] = [
+    mk('1', 'Rent', 900, 'fixed'),
+    mk('2', 'Groceries', 280, 'variable')
+  ];
+
+  it('removing a recurring bill decreases Total Budgeted', () => {
+    const before = totalBudgeted(base);
+    const after = totalBudgeted(removeBudgetItemFromList(base, '1'));
+    expect(after).toBe(before - 900);
+    expect(after).toBe(280);
+  });
+
+  it('removing a variable category decreases Total Budgeted', () => {
+    const before = totalBudgeted(base);
+    const after = totalBudgeted(removeBudgetItemFromList(base, '2'));
+    expect(after).toBe(before - 280);
+    expect(after).toBe(900);
+  });
+
+  it('removing an unknown id leaves the list unchanged', () => {
+    const next = removeBudgetItemFromList(base, 'missing');
+    expect(next).toEqual(base);
+    expect(totalBudgeted(next)).toBe(totalBudgeted(base));
+  });
+});

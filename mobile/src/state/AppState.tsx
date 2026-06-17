@@ -93,6 +93,8 @@ export interface AppContextValue {
   updateBudgetItem(id: string, patch: Partial<Omit<BudgetItem, 'id'>>): void;
   /** Append a budget row; assigns a new unique `id` and persists with the rest of app state. */
   addBudgetItem(draft: Omit<BudgetItem, 'id'>): void;
+  /** Remove a budget row by id and persist the updated list. */
+  removeBudgetItem(id: string): void;
   setAvailableToBudget(amount: number): void;
   setSavingsTarget(amount: number | undefined): void;
   setDesiredSavingsRate(rate: number): void;
@@ -489,6 +491,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setBudgetItems((prev) => [...prev, item]);
   }, []);
 
+  const removeBudgetItem = useCallback<AppContextValue['removeBudgetItem']>((id) => {
+    setBudgetItems((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
   const setAvailableToBudget = useCallback<AppContextValue['setAvailableToBudget']>(
     (amount) => {
       updateSettings({ availableToBudget: Math.max(0, amount) });
@@ -615,6 +621,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     markBillAsPaid,
     updateBudgetItem,
     addBudgetItem,
+    removeBudgetItem,
     setAvailableToBudget,
     setSavingsTarget,
     setDesiredSavingsRate,
