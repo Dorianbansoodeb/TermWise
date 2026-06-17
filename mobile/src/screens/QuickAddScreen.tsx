@@ -24,6 +24,7 @@ import type { RootStackParamList } from '../navigation/constants';
 type QuickAddScreenProps = NativeStackScreenProps<RootStackParamList, 'QuickAdd'>;
 
 type ExpenseRoute = 'fixed' | 'variable';
+type DatePreset = 'today' | 'yesterday' | 'custom';
 
 const NEW_TARGET = '__new__';
 const ONE_TIME_TARGET = 'oneTime';
@@ -44,6 +45,10 @@ function pickDefaultExpenseSelection(items: BudgetItem[]): {
   return { route: 'variable', targetId: ONE_TIME_TARGET, category: '' };
 }
 
+function detectExpenseRoute(category: string, budgetItems: BudgetItem[]): ExpenseRoute {
+  return findFixedBillForCategory(category.trim(), budgetItems) ? 'fixed' : 'variable';
+}
+
 /// Quick Add modal. Single source of truth for adding expense/income
 /// transactions from the orange + FAB.
 ///
@@ -62,19 +67,28 @@ export function QuickAddScreen({ navigation }: QuickAddScreenProps) {
   const [amount, setAmount] = useState('');
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
-  const [dateInput, setDateInput] = useState(dayKey(new Date()));
+  const [datePreset, setDatePreset] = useState<DatePreset>('today');
+  const [customDateInput, setCustomDateInput] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const hydratedExpenseDefaults = useRef(false);
 
-  const fixedBills = useMemo(
-    () => budgetItems.filter((b) => b.budgetType === 'fixed'),
+  const expenseCategories = useMemo(
+    () => budgetItems.filter((b) => b.budgetType === 'fixed' || b.budgetType === 'variable'),
     [budgetItems]
   );
-  const variableItems = useMemo(
-    () => budgetItems.filter((b) => b.budgetType === 'variable'),
-    [budgetItems]
-  );
+
+  const incomePresets = PRESET_INCOME_CATEGORIES;
+
+  const todayKey = dayKey(new Date());
+  const yesterdayKey = dayKey(addDays(new Date(), -1));
+
+  const dateInput =
+    datePreset === 'today' ? todayKey : datePreset === 'yesterday' ? yesterdayKey : customDateInput;
+
+  const parsedDate = useMemo(() => parseYmd(dateInput), [dateInput]);
+  const dateValid = parsedDate !== null;
 
   function applyExpenseSelection(next: { route: ExpenseRoute; targetId: string; category: string }) {
     setExpenseRoute(next.route);
@@ -92,22 +106,9 @@ export function QuickAddScreen({ navigation }: QuickAddScreenProps) {
     applyExpenseSelection(pickDefaultExpenseSelection(budgetItems));
   }, [budgetItems]);
 
-  const incomePresets = PRESET_INCOME_CATEGORIES;
-
-  const parsedDate = useMemo(() => parseYmd(dateInput), [dateInput]);
-  const dateValid = parsedDate !== null;
-
-  const todayKey = dayKey(new Date());
-  const yesterdayKey = dayKey(addDays(new Date(), -1));
-
   const showCategoryField =
     type === 'expense' &&
-    ((expenseRoute === 'fixed' &&
-      (expenseTargetId === NEW_TARGET || fixedBills.length === 0)) ||
-      (expenseRoute === 'variable' &&
-        (expenseTargetId === NEW_TARGET ||
-          expenseTargetId === ONE_TIME_TARGET ||
-          variableItems.length === 0)));
+    (expenseTargetId === NEW_TARGET || expenseTargetId === ONE_TIME_TARGET);
 
   function resolveExpenseBillId(): string | undefined {
     if (expenseRoute !== 'fixed') return undefined;
@@ -147,14 +148,13 @@ export function QuickAddScreen({ navigation }: QuickAddScreenProps) {
       return;
     }
 
-    // Expense
     if (!category.trim()) {
-      if (expenseRoute === 'variable' && expenseTargetId === ONE_TIME_TARGET) {
+      if (expenseTargetId === ONE_TIME_TARGET) {
         setError(
           'Enter what this one-time purchase was for (for example Pet adoption, furniture).'
         );
       } else {
-        setError('Pick a bill or category, or tap New / One-time and type a name.');
+        setError('Pick a category or use Advanced for one-time / new categories.');
       }
       return;
     }
@@ -174,41 +174,59 @@ export function QuickAddScreen({ navigation }: QuickAddScreenProps) {
     navigation.goBack();
   };
 
-  function handleExpenseRouteChange(route: ExpenseRoute) {
-    setError(null);
-    if (route === 'fixed') {
-      const first = fixedBills[0];
-      if (first) {
-        applyExpenseSelection({ route: 'fixed', targetId: first.id, category: first.category });
-      } else {
-        applyExpenseSelection({ route: 'fixed', targetId: NEW_TARGET, category: '' });
-      }
-      return;
-    }
-    const first = variableItems[0];
-    if (first) {
-      applyExpenseSelection({ route: 'variable', targetId: first.id, category: first.category });
-    } else {
-      applyExpenseSelection({ route: 'variable', targetId: ONE_TIME_TARGET, category: '' });
-    }
-  }
-
   function selectBudgetLine(item: BudgetItem) {
     setError(null);
     setExpenseTargetId(item.id);
     setCategory(item.category);
+    setExpenseRoute(item.budgetType === 'fixed' ? 'fixed' : 'variable');
   }
 
   function selectNewCategory() {
     setError(null);
     setExpenseTargetId(NEW_TARGET);
     setCategory('');
+    setExpenseRoute('variable');
   }
 
   function selectOneTime() {
     setError(null);
     setExpenseTargetId(ONE_TIME_TARGET);
     setCategory('');
+    setExpenseRoute('variable');
+  }
+
+  function handleExpenseRouteChange(route: ExpenseRoute) {
+    setError(null);
+    setExpenseRoute(route);
+    if (expenseTargetId !== NEW_TARGET && expenseTargetId !== ONE_TIME_TARGET) {
+      const current = budgetItems.find((b) => b.id === expenseTargetId);
+      if (current && current.budgetType !== route) {
+        const next = budgetItems.find((b) => b.budgetType === route);
+        if (next) {
+          selectBudgetLine(next);
+        } else if (route === 'variable') {
+          selectOneTime();
+        } else {
+          selectNewCategory();
+        }
+      }
+    }
+  }
+
+  function handleCategoryTextChange(value: string) {
+    setCategory(value);
+    if (error) setError(null);
+    if (expenseTargetId === NEW_TARGET) {
+      setExpenseRoute(detectExpenseRoute(value, budgetItems));
+    }
+  }
+
+  function selectDatePreset(preset: DatePreset) {
+    setDatePreset(preset);
+    if (error) setError(null);
+    if (preset === 'custom' && !customDateInput.trim()) {
+      setCustomDateInput(todayKey);
+    }
   }
 
   return (
@@ -272,100 +290,9 @@ export function QuickAddScreen({ navigation }: QuickAddScreenProps) {
 
           {type === 'expense' ? (
             <>
-              <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>
-                How should this expense count?
-              </Text>
-              <View style={[styles.typeRow, { backgroundColor: theme.surfaceMuted }]}>
-                {(
-                  [
-                    { route: 'fixed' as const, label: 'Recurring bill' },
-                    { route: 'variable' as const, label: 'Variable spending' }
-                  ] as const
-                ).map(({ route, label }) => {
-                  const selected = expenseRoute === route;
-                  return (
-                    <Pressable
-                      key={route}
-                      onPress={() => handleExpenseRouteChange(route)}
-                      style={[
-                        styles.typeSegment,
-                        selected && { backgroundColor: theme.surface, borderColor: theme.border }
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.typeLabel,
-                          {
-                            color: selected ? theme.text : theme.textMuted,
-                            fontWeight: selected ? '700' : '500'
-                          }
-                        ]}
-                        numberOfLines={2}
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {expenseRoute === 'variable' ? (
-                <Text style={[styles.helper, { color: theme.textMuted }]}>
-                  One-time (amber outline) is for purchases that should not use a variable category
-                  limit. New… (blue outline) is for any other typed category. Neither links to
-                  recurring bills.
-                </Text>
-              ) : null}
-            </>
-          ) : null}
-
-          <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Amount</Text>
-          <TextInput
-            value={amount}
-            onChangeText={(v) => {
-              setAmount(v);
-              if (error) setError(null);
-            }}
-            placeholder="0.00"
-            keyboardType="decimal-pad"
-            placeholderTextColor={theme.textMuted}
-            style={[
-              styles.input,
-              styles.amountInput,
-              {
-                color: theme.text,
-                borderColor: theme.border,
-                backgroundColor: theme.surface
-              }
-            ]}
-          />
-
-          <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>
-            {type === 'expense' ? 'Merchant / Name' : 'Source / Name'}
-          </Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder={
-              type === 'expense' ? 'Loblaws, Uber, Starbucks…' : 'Co-op employer, OSAP, etc.'
-            }
-            placeholderTextColor={theme.textMuted}
-            style={[
-              styles.input,
-              {
-                color: theme.text,
-                borderColor: theme.border,
-                backgroundColor: theme.surface
-              }
-            ]}
-          />
-
-          {type === 'expense' ? (
-            <>
-              <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>
-                {expenseRoute === 'fixed' ? 'Recurring bill' : 'Variable spending'}
-              </Text>
+              <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Category</Text>
               <View style={styles.presetWrap}>
-                {(expenseRoute === 'fixed' ? fixedBills : variableItems).map((item) => {
+                {expenseCategories.map((item) => {
                   const selected = expenseTargetId === item.id;
                   return (
                     <Pressable
@@ -391,8 +318,194 @@ export function QuickAddScreen({ navigation }: QuickAddScreenProps) {
                     </Pressable>
                   );
                 })}
-                {expenseRoute === 'variable' ? (
-                  <>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Income type</Text>
+              <View style={styles.presetWrap}>
+                {incomePresets.map((p) => {
+                  const selected = p === category;
+                  return (
+                    <Pressable
+                      key={p}
+                      onPress={() => setCategory(p)}
+                      style={[
+                        styles.preset,
+                        {
+                          backgroundColor: selected ? theme.surfaceMuted : theme.surface,
+                          borderColor: selected ? theme.text : theme.border
+                        }
+                      ]}
+                    >
+                      <View style={[styles.presetDot, { backgroundColor: colorForCategory(p) }]} />
+                      <Text style={[styles.presetLabel, { color: theme.text }]}>{p}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          )}
+
+          <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Amount</Text>
+          <TextInput
+            value={amount}
+            onChangeText={(v) => {
+              setAmount(v);
+              if (error) setError(null);
+            }}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            placeholderTextColor={theme.textMuted}
+            style={[
+              styles.input,
+              styles.amountInput,
+              {
+                color: theme.text,
+                borderColor: theme.border,
+                backgroundColor: theme.surface
+              }
+            ]}
+          />
+
+          <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Date</Text>
+          <View style={styles.dateRow}>
+            {(
+              [
+                { preset: 'today' as const, label: 'Today' },
+                { preset: 'yesterday' as const, label: 'Yesterday' },
+                { preset: 'custom' as const, label: 'Custom' }
+              ] as const
+            ).map(({ preset, label }) => {
+              const selected = datePreset === preset;
+              return (
+                <Pressable
+                  key={preset}
+                  onPress={() => selectDatePreset(preset)}
+                  style={[
+                    styles.dateChip,
+                    {
+                      backgroundColor: selected ? theme.primary : theme.surface,
+                      borderColor: selected ? theme.primary : theme.border
+                    }
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.dateChipLabel,
+                      { color: selected ? theme.primaryText : theme.text }
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {datePreset === 'custom' ? (
+            <TextInput
+              value={customDateInput}
+              onChangeText={(v) => {
+                setCustomDateInput(v);
+                if (error) setError(null);
+              }}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={theme.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[
+                styles.input,
+                styles.customDateInput,
+                {
+                  color: theme.text,
+                  borderColor: dateValid ? theme.border : theme.danger,
+                  backgroundColor: theme.surface
+                }
+              ]}
+            />
+          ) : null}
+          {parsedDate ? (
+            <Text style={[styles.dateHint, { color: theme.textMuted }]}>
+              {relativeDayLabel(parsedDate)}
+            </Text>
+          ) : null}
+
+          <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Note (optional)</Text>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder={type === 'expense' ? 'Coffee with Sam' : 'Biweekly direct deposit'}
+            placeholderTextColor={theme.textMuted}
+            style={[
+              styles.input,
+              {
+                color: theme.text,
+                borderColor: theme.border,
+                backgroundColor: theme.surface
+              }
+            ]}
+          />
+
+          <Pressable
+            onPress={() => setAdvancedOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: advancedOpen }}
+            style={({ pressed }) => [
+              styles.advancedToggle,
+              { opacity: pressed ? 0.7 : 1 }
+            ]}
+          >
+            <Text style={[styles.advancedLabel, { color: theme.textMuted }]}>
+              Advanced {advancedOpen ? '\u25B2' : '\u25BC'}
+            </Text>
+          </Pressable>
+
+          {advancedOpen ? (
+            <View style={styles.advancedSection}>
+              {type === 'expense' ? (
+                <>
+                  <Text style={[styles.fieldLabel, { color: theme.textMuted, marginTop: 0 }]}>
+                    How should this expense count?
+                  </Text>
+                  <View style={[styles.typeRow, { backgroundColor: theme.surfaceMuted }]}>
+                    {(
+                      [
+                        { route: 'fixed' as const, label: 'Recurring bill' },
+                        { route: 'variable' as const, label: 'Variable spending' }
+                      ] as const
+                    ).map(({ route, label }) => {
+                      const selected = expenseRoute === route;
+                      return (
+                        <Pressable
+                          key={route}
+                          onPress={() => handleExpenseRouteChange(route)}
+                          style={[
+                            styles.typeSegment,
+                            selected && {
+                              backgroundColor: theme.surface,
+                              borderColor: theme.border
+                            }
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.typeLabel,
+                              {
+                                color: selected ? theme.text : theme.textMuted,
+                                fontWeight: selected ? '700' : '500'
+                              }
+                            ]}
+                            numberOfLines={2}
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Other options</Text>
+                  <View style={styles.presetWrap}>
                     <Pressable
                       onPress={selectOneTime}
                       style={[
@@ -417,9 +530,7 @@ export function QuickAddScreen({ navigation }: QuickAddScreenProps) {
                           styles.presetLabel,
                           {
                             color:
-                              expenseTargetId === ONE_TIME_TARGET
-                                ? theme.text
-                                : theme.warning
+                              expenseTargetId === ONE_TIME_TARGET ? theme.text : theme.warning
                           }
                         ]}
                       >
@@ -449,179 +560,66 @@ export function QuickAddScreen({ navigation }: QuickAddScreenProps) {
                         style={[
                           styles.presetLabel,
                           {
-                            color:
-                              expenseTargetId === NEW_TARGET ? theme.text : theme.accent
+                            color: expenseTargetId === NEW_TARGET ? theme.text : theme.accent
                           }
                         ]}
                       >
                         New…
                       </Text>
                     </Pressable>
-                  </>
-                ) : (
-                  <Pressable
-                    onPress={selectNewCategory}
-                    style={[
-                      styles.preset,
-                      styles.specialPill,
-                      expenseTargetId === NEW_TARGET
-                        ? {
-                            backgroundColor: tintHex(theme.accent, '33'),
-                            borderColor: theme.accent,
-                            borderWidth: 2
-                          }
-                        : {
-                            backgroundColor: theme.surface,
-                            borderColor: theme.accent,
-                            borderWidth: 1.5
-                          }
-                    ]}
-                  >
-                    <View style={[styles.presetDot, { backgroundColor: theme.accent }]} />
-                    <Text
-                      style={[
-                        styles.presetLabel,
-                        {
-                        color:
-                          expenseTargetId === NEW_TARGET ? theme.text : theme.accent
+                  </View>
+
+                  {showCategoryField ? (
+                    <>
+                      <Text style={[styles.subLabel, { color: theme.textMuted }]}>
+                        {expenseTargetId === ONE_TIME_TARGET
+                          ? 'What was this for? (one-time — not counted against a variable limit)'
+                          : 'Type a category name'}
+                      </Text>
+                      <TextInput
+                        value={category}
+                        onChangeText={handleCategoryTextChange}
+                        placeholder={
+                          expenseTargetId === ONE_TIME_TARGET
+                            ? 'e.g. Pet adoption, new laptop, furniture delivery'
+                            : 'Custom category'
                         }
-                      ]}
-                    >
-                      New…
-                    </Text>
-                  </Pressable>
-                )}
-              </View>
-              {showCategoryField ? (
-                <>
-                  <Text style={[styles.subLabel, { color: theme.textMuted }]}>
-                    {expenseRoute === 'variable' && expenseTargetId === ONE_TIME_TARGET
-                      ? 'What was this for? (one-time — not counted against a variable limit)'
-                      : 'Type a category name'}
-                  </Text>
-                  <TextInput
-                    value={category}
-                    onChangeText={(v) => {
-                      setCategory(v);
-                      if (error) setError(null);
-                    }}
-                    placeholder={
-                      expenseRoute === 'variable' && expenseTargetId === ONE_TIME_TARGET
-                        ? 'e.g. Pet adoption, new laptop, furniture delivery'
-                        : 'Custom category'
-                    }
-                    placeholderTextColor={theme.textMuted}
-                    style={[
-                      styles.input,
-                      {
-                        color: theme.text,
-                        borderColor: theme.border,
-                        backgroundColor: theme.surface
-                      }
-                    ]}
-                  />
+                        placeholderTextColor={theme.textMuted}
+                        style={[
+                          styles.input,
+                          {
+                            color: theme.text,
+                            borderColor: theme.border,
+                            backgroundColor: theme.surface
+                          }
+                        ]}
+                      />
+                    </>
+                  ) : null}
                 </>
               ) : null}
-            </>
-          ) : (
-            <>
-              <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Income type</Text>
-              <View style={styles.presetWrap}>
-                {incomePresets.map((p) => {
-                  const selected = p === category;
-                  return (
-                    <Pressable
-                      key={p}
-                      onPress={() => setCategory(p)}
-                      style={[
-                        styles.preset,
-                        {
-                          backgroundColor: selected ? theme.surfaceMuted : theme.surface,
-                          borderColor: selected ? theme.text : theme.border
-                        }
-                      ]}
-                    >
-                      <View style={[styles.presetDot, { backgroundColor: colorForCategory(p) }]} />
-                      <Text style={[styles.presetLabel, { color: theme.text }]}>{p}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          )}
 
-          <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Date</Text>
-          <View style={styles.dateRow}>
-            {[
-              { label: 'Today', value: todayKey },
-              { label: 'Yesterday', value: yesterdayKey }
-            ].map((opt) => {
-              const selected = dateInput === opt.value;
-              return (
-                <Pressable
-                  key={opt.label}
-                  onPress={() => setDateInput(opt.value)}
-                  style={[
-                    styles.dateChip,
-                    {
-                      backgroundColor: selected ? theme.primary : theme.surface,
-                      borderColor: selected ? theme.primary : theme.border
-                    }
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dateChipLabel,
-                      { color: selected ? theme.primaryText : theme.text }
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            <TextInput
-              value={dateInput}
-              onChangeText={(v) => {
-                setDateInput(v);
-                if (error) setError(null);
-              }}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={theme.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={[
-                styles.input,
-                styles.dateInput,
-                {
-                  color: theme.text,
-                  borderColor: dateValid ? theme.border : theme.danger,
-                  backgroundColor: theme.surface
+              <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>
+                {type === 'expense' ? 'Merchant / Name' : 'Source / Name'}
+              </Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder={
+                  type === 'expense' ? 'Loblaws, Uber, Starbucks…' : 'Co-op employer, OSAP, etc.'
                 }
-              ]}
-            />
-          </View>
-          {parsedDate ? (
-            <Text style={[styles.dateHint, { color: theme.textMuted }]}>
-              {relativeDayLabel(parsedDate)}
-            </Text>
+                placeholderTextColor={theme.textMuted}
+                style={[
+                  styles.input,
+                  {
+                    color: theme.text,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surface
+                  }
+                ]}
+              />
+            </View>
           ) : null}
-
-          <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Note (optional)</Text>
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder={type === 'expense' ? 'Coffee with Sam' : 'Biweekly direct deposit'}
-            placeholderTextColor={theme.textMuted}
-            style={[
-              styles.input,
-              {
-                color: theme.text,
-                borderColor: theme.border,
-                backgroundColor: theme.surface
-              }
-            ]}
-          />
 
           {error ? (
             <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
@@ -718,12 +716,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center'
   },
-  helper: {
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: -SPACING.xs,
-    marginBottom: SPACING.sm
-  },
   fieldLabel: {
     fontSize: 11,
     fontWeight: '700',
@@ -791,15 +783,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600'
   },
-  dateInput: {
-    flexGrow: 1,
-    flexBasis: 120,
-    minWidth: 120,
+  customDateInput: {
+    marginTop: SPACING.xs,
     fontSize: 14
   },
   dateHint: {
     fontSize: 11,
     marginTop: 2
+  },
+  advancedToggle: {
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.xs
+  },
+  advancedLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase'
+  },
+  advancedSection: {
+    gap: SPACING.sm
   },
   errorText: {
     fontSize: 13,
