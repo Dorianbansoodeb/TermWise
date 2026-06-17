@@ -59,6 +59,8 @@ export interface AppContextValue {
   savingsTarget: number;
   /// Loaded flag — UI shows splash until storage is read.
   isHydrated: boolean;
+  /** False until the user finishes first-run onboarding. */
+  hasCompletedOnboarding: boolean;
   /// Reference "now" — fixed at first hydration so chart slot math is stable
   /// within a single render.
   referenceDate: Date;
@@ -98,6 +100,8 @@ export interface AppContextValue {
   dismissUndoBar(opts?: { performAction?: boolean }): void;
   /// Drops local AsyncStorage state and reseeds the demo data.
   resetToDemo(): Promise<void>;
+  /** Marks first-run onboarding complete and persists. */
+  completeOnboarding(): void;
 
   // Transient UI
   pendingIncomePrompt: PendingIncomePrompt | null;
@@ -123,9 +127,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [chartMode, setChartModeState] = useState<ChartMode>('variable');
   const [variableChartRange, setVariableChartRangeState] = useState<ChartRange>('currentMonth');
   const [appUserSettings, setAppUserSettings] = useState(() => mergeAppUserSettings(undefined));
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const appUserSettingsRef = useRef(appUserSettings);
   const [lastDemoSeedMonthKey, setLastDemoSeedMonthKey] = useState<string | undefined>(undefined);
   appUserSettingsRef.current = appUserSettings;
+  const hasCompletedOnboardingRef = useRef(hasCompletedOnboarding);
+  hasCompletedOnboardingRef.current = hasCompletedOnboarding;
 
   const persistedSnapshotRef = useRef({
     transactions,
@@ -135,7 +142,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     chartMode,
     variableChartRange,
     appUserSettings,
-    lastDemoSeedMonthKey
+    lastDemoSeedMonthKey,
+    hasCompletedOnboarding
   });
   persistedSnapshotRef.current = {
     transactions,
@@ -145,7 +153,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     chartMode,
     variableChartRange,
     appUserSettings,
-    lastDemoSeedMonthKey
+    lastDemoSeedMonthKey,
+    hasCompletedOnboarding
   };
 
   const referenceDateRef = useRef(referenceDate);
@@ -191,6 +200,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setVariableChartRangeState(state.variableChartRange);
     setAppUserSettings(mergeAppUserSettings(state.appUserSettings));
     setLastDemoSeedMonthKey(state.lastDemoSeedMonthKey);
+    setHasCompletedOnboarding(state.hasCompletedOnboarding);
   }
 
   const applyMonthRollover = useCallback((now: Date) => {
@@ -236,7 +246,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       chartMode,
       variableChartRange,
       appUserSettings,
-      lastDemoSeedMonthKey
+      lastDemoSeedMonthKey,
+      hasCompletedOnboarding
     };
     defaultAppRepository.save(snapshot);
   }, [
@@ -248,7 +259,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     chartMode,
     variableChartRange,
     appUserSettings,
-    lastDemoSeedMonthKey
+    lastDemoSeedMonthKey,
+    hasCompletedOnboarding
   ]);
 
   // MARK: settings helpers
@@ -538,8 +550,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       chartMode: next.chartMode,
       variableChartRange: next.variableChartRange,
       appUserSettings: kept,
-      lastDemoSeedMonthKey: next.lastDemoSeedMonthKey
+      lastDemoSeedMonthKey: next.lastDemoSeedMonthKey,
+      hasCompletedOnboarding: hasCompletedOnboardingRef.current
     });
+  }, []);
+
+  const completeOnboarding = useCallback(() => {
+    setHasCompletedOnboarding(true);
   }, []);
 
   const value: AppContextValue = {
@@ -553,6 +570,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     availableToBudget,
     savingsTarget,
     isHydrated,
+    hasCompletedOnboarding,
     referenceDate,
     appUserSettings,
     formatMoney,
@@ -572,6 +590,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     resolveIncomePrompt,
     dismissUndoBar,
     resetToDemo,
+    completeOnboarding,
     pendingIncomePrompt,
     pendingUndoBar
   };

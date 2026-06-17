@@ -210,7 +210,8 @@ export function buildDemoState(now: Date = new Date()): PersistedState {
     chartMode: 'variable',
     variableChartRange: 'currentMonth',
     appUserSettings: { ...DEFAULT_APP_USER_SETTINGS },
-    lastDemoSeedMonthKey: currentMonthKey
+    lastDemoSeedMonthKey: currentMonthKey,
+    hasCompletedOnboarding: false
   };
 }
 

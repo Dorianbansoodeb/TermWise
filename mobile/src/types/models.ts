@@ -176,4 +176,6 @@ export interface PersistedState {
   appUserSettings: AppUserSettings;
   /// Month key (`YYYY-MM`) when demo transactions were last appended for rollover seeding.
   lastDemoSeedMonthKey?: string;
+  /** First-run onboarding — false until the user finishes the intro flow. */
+  hasCompletedOnboarding: boolean;
 }

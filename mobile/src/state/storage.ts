@@ -46,7 +46,9 @@ function migrateSchemaV1(raw: RawPersistedState): PersistedState {
     variableChartRange: normalizeVariableChartRange(raw.variableChartRange),
     appUserSettings: mergeAppUserSettings(raw.appUserSettings as AppUserSettings | undefined),
     lastDemoSeedMonthKey:
-      typeof raw.lastDemoSeedMonthKey === 'string' ? raw.lastDemoSeedMonthKey : undefined
+      typeof raw.lastDemoSeedMonthKey === 'string' ? raw.lastDemoSeedMonthKey : undefined,
+    hasCompletedOnboarding:
+      typeof raw.hasCompletedOnboarding === 'boolean' ? raw.hasCompletedOnboarding : false
   };
 }
 
