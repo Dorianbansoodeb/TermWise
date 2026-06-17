@@ -18,8 +18,9 @@ import type {
   PersistedState,
   TransactionItem
 } from '../types/models';
+import { defaultAppRepository } from './AppRepository';
 import { buildDemoState } from './demoData';
-import { loadPersistedState, prepareStateForReferenceMonth, savePersistedState } from './storage';
+import { prepareStateForReferenceMonth } from './storage';
 import { monthKey } from '../utils/date';
 import { mergeAppUserSettings } from '../utils/appUserSettings';
 import { formatCurrencyWith } from '../utils/format';
@@ -135,7 +136,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const stored = await loadPersistedState();
+      const stored = await defaultAppRepository.load();
       const base = stored ?? buildDemoState(referenceDate);
       const initial = prepareStateForReferenceMonth(base, referenceDate);
       if (cancelled) return;
@@ -146,7 +147,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           Object.keys(initial.monthlySettingsByMonth).length !==
             Object.keys(stored.monthlySettingsByMonth).length);
       if (!stored || migrated) {
-        await savePersistedState(initial);
+        await defaultAppRepository.save(initial);
       }
       setHydrated(true);
     })();
@@ -177,7 +178,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       variableChartRange,
       appUserSettings
     };
-    savePersistedState(snapshot);
+    defaultAppRepository.save(snapshot);
   }, [
     isHydrated,
     transactions,
@@ -466,7 +467,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setChartModeState(next.chartMode);
     setVariableChartRangeState(next.variableChartRange);
     setAppUserSettings(kept);
-    await savePersistedState({
+    await defaultAppRepository.save({
       schemaVersion: 1,
       transactions: next.transactions,
       budgetItems: next.budgetItems,
