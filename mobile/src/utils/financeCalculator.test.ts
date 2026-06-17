@@ -5,7 +5,9 @@ import {
   actualSpentForCategory,
   budgetDifference,
   budgetPercentUsed,
+  filterTransactions,
   findFixedBillForCategory,
+  fixedBillStatus,
   profileExpenseBreakdownRows,
   profileMonthSummaries,
   recurringBillsForMonth,
@@ -233,6 +235,35 @@ describe('variableCategoryProgress', () => {
   });
 });
 
+// --- Fixed bill status ---
+
+describe('fixedBillStatus', () => {
+  const ref = new Date('2026-05-15T12:00:00.000Z');
+
+  it('returns paid when actual meets or exceeds planned', () => {
+    expect(fixedBillStatus(900, 900, 1, ref)).toBe('paid');
+    expect(fixedBillStatus(900, 1000, 1, ref)).toBe('paid');
+  });
+
+  it('returns partial when some but not all of planned is paid', () => {
+    expect(fixedBillStatus(900, 400, 1, ref)).toBe('partial');
+  });
+
+  it('returns overdue when unpaid and due day is before the reference day', () => {
+    expect(fixedBillStatus(900, 0, 1, ref)).toBe('overdue');
+    expect(fixedBillStatus(900, 0, 14, ref)).toBe('overdue');
+  });
+
+  it('returns upcoming when unpaid and due day is on or after the reference day', () => {
+    expect(fixedBillStatus(900, 0, 15, ref)).toBe('upcoming');
+    expect(fixedBillStatus(900, 0, 28, ref)).toBe('upcoming');
+  });
+
+  it('returns upcoming when unpaid and no due day is set', () => {
+    expect(fixedBillStatus(900, 0, undefined, ref)).toBe('upcoming');
+  });
+});
+
 // --- Recurring Bill edits ---
 
 const mkFixed = (
@@ -321,7 +352,7 @@ describe('recurring bill edits (via updateBudgetItem patch shape)', () => {
     const rolled = recurringBillsForMonth([patched], [], REF).find((b) => b.id === 'rent')!;
     expect(rolled.dueDay).toBe(15);
     expect(rolled.frequency).toBe('biweekly');
-    expect(rolled.status).toBe('unpaid');
+    expect(rolled.status).toBe('upcoming');
   });
 
   it('clearing due day (set to undefined) is preserved', () => {

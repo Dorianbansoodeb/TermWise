@@ -177,10 +177,17 @@ export function actualPaidForBill(
     .reduce((acc, t) => acc + netExpenseAmount(t), 0);
 }
 
-export function fixedBillStatus(planned: number, actual: number): FixedBillStatus {
-  if (actual <= 0) return 'unpaid';
-  if (actual < planned) return 'partial';
-  return 'paid';
+export function fixedBillStatus(
+  planned: number,
+  actual: number,
+  dueDay: number | undefined,
+  referenceDate: Date
+): FixedBillStatus {
+  if (actual >= planned) return 'paid';
+  if (actual > 0) return 'partial';
+  if (dueDay === undefined) return 'upcoming';
+  const currentDay = referenceDate.getDate();
+  return dueDay < currentDay ? 'overdue' : 'upcoming';
 }
 
 /// Find a fixed `BudgetItem` that should be credited when an expense is
@@ -223,7 +230,7 @@ export function recurringBillsForMonth(
         dueDay: b.dueDay,
         frequency: b.frequency,
         actualPaid: actual,
-        status: fixedBillStatus(b.planned, actual)
+        status: fixedBillStatus(b.planned, actual, b.dueDay, referenceDate)
       };
     });
 }

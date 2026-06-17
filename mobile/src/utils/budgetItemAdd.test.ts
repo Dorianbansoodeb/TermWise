@@ -48,7 +48,7 @@ describe('budgetItemAdd flow', () => {
     expect(after).toBe(before + 40);
   });
 
-  it('new fixed bill starts Unpaid when there are no matching transactions', () => {
+  it('new fixed bill is overdue when due day has passed', () => {
     const draft = buildRecurringBudgetItemDraft({
       category: 'Water',
       planned: 55,
@@ -56,7 +56,7 @@ describe('budgetItemAdd flow', () => {
       dueDay: 10
     });
     const bills = recurringBillsForMonth([...base, { ...draft, id: 'new-fixed' }], [], refDate);
-    expect(bills.find((b) => b.id === 'new-fixed')?.status).toBe('unpaid');
+    expect(bills.find((b) => b.id === 'new-fixed')?.status).toBe('overdue');
   });
 
   it('new variable category starts with actual = 0', () => {
