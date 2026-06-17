@@ -11,7 +11,9 @@ import {
   type TransactionFilter
 } from '../utils/financeCalculator';
 import { TransactionGroupList } from '../components/TransactionGroupList';
+import { EditTransactionSheet } from '../components/EditTransactionSheet';
 import { contentBottomPaddingForTabs } from '../navigation/constants';
+import type { TransactionItem } from '../types/models';
 
 const FILTERS: { value: TransactionFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -22,8 +24,9 @@ const FILTERS: { value: TransactionFilter; label: string }[] = [
 export function TransactionsScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { transactions, removeTransaction } = useAppState();
+  const { transactions, removeTransaction, updateTransaction } = useAppState();
   const [filter, setFilter] = useState<TransactionFilter>('all');
+  const [editingTransaction, setEditingTransaction] = useState<TransactionItem | null>(null);
 
   const groups = useMemo(
     () => groupTransactionsByDay(filterTransactions(transactions, filter)),
@@ -40,7 +43,7 @@ export function TransactionsScreen() {
       >
         <Text style={[styles.title, { color: theme.text }]}>Transactions</Text>
         <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-          Swipe left on a row to delete. Undo is available for 5 seconds.
+          Tap a row to edit. Swipe left to delete. Undo is available for 5 seconds.
         </Text>
         <View style={[styles.filterRow, { backgroundColor: theme.surfaceMuted }]}>
           {FILTERS.map((f) => {
@@ -74,9 +77,20 @@ export function TransactionsScreen() {
         </View>
         <TransactionGroupList
           groups={groups}
+          onEdit={setEditingTransaction}
           onRemove={(txn) => removeTransaction(txn.id, { withUndo: true })}
         />
       </ScrollView>
+
+      <EditTransactionSheet
+        visible={editingTransaction !== null}
+        transaction={editingTransaction}
+        onCancel={() => setEditingTransaction(null)}
+        onSave={(patch) => {
+          if (editingTransaction) updateTransaction(editingTransaction.id, patch);
+          setEditingTransaction(null);
+        }}
+      />
     </SafeAreaView>
   );
 }

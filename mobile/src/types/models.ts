@@ -27,6 +27,11 @@ export interface TransactionItem {
   undoable: boolean;
 }
 
+/** Mark-as-Paid synthetic rows with undo — not editable (undo instead). */
+export function isUndoableMarkAsPaidTransaction(txn: TransactionItem): boolean {
+  return txn.undoable && txn.source === 'markAsPaid';
+}
+
 export type BudgetType = 'fixed' | 'variable' | 'savings';
 
 export type PaymentFrequency = 'none' | 'monthly' | 'weekly' | 'biweekly' | 'oneTime';

@@ -22,7 +22,8 @@ import type {
 import { defaultAppRepository } from './AppRepository';
 import { buildDemoState } from './demoData';
 import { prepareStateForReferenceMonth } from './storage';
-import { monthKey } from '../utils/date';
+import { calendarDateISO, monthKey, parseCalendarDate } from '../utils/date';
+import { isUndoableMarkAsPaidTransaction } from '../types/models';
 import { mergeAppUserSettings } from '../utils/appUserSettings';
 import { formatCurrencyWith } from '../utils/format';
 import {
@@ -83,6 +84,10 @@ export interface AppContextValue {
     undoable?: boolean;
   }): TransactionItem;
   removeTransaction(id: string, opts?: { withUndo?: boolean }): void;
+  updateTransaction(
+    id: string,
+    patch: Partial<Pick<TransactionItem, 'amount' | 'name' | 'category' | 'note' | 'date'>>
+  ): void;
   markBillAsPaid(billId: string): void;
   /** Patch any subset of a BudgetItem (name / planned limit / dueDay / etc.). */
   updateBudgetItem(id: string, patch: Partial<Omit<BudgetItem, 'id'>>): void;
@@ -398,6 +403,36 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [transactions, scheduleUndo]
   );
 
+
+  const updateTransaction = useCallback<AppContextValue['updateTransaction']>(
+    (id, patch) => {
+      setTransactions((prev) =>
+        prev.map((t) => {
+          if (t.id !== id) return t;
+          if (isUndoableMarkAsPaidTransaction(t)) return t;
+          const next: TransactionItem = { ...t };
+          if (patch.amount !== undefined) {
+            next.amount = Math.max(0, patch.amount);
+          }
+          if (patch.name !== undefined) {
+            next.name = patch.name.trim() || t.name;
+          }
+          if (patch.category !== undefined) {
+            next.category = patch.category.trim() || t.category;
+          }
+          if (patch.note !== undefined) {
+            next.note = patch.note;
+          }
+          if (patch.date !== undefined) {
+            next.date = calendarDateISO(parseCalendarDate(patch.date));
+          }
+          return next;
+        })
+      );
+    },
+    []
+  );
+
   const markBillAsPaid = useCallback<AppContextValue['markBillAsPaid']>(
     (billId) => {
       const bill = budgetItems.find((b) => b.id === billId && b.budgetType === 'fixed');
@@ -576,6 +611,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     formatMoney,
     addTransaction,
     removeTransaction,
+    updateTransaction,
     markBillAsPaid,
     updateBudgetItem,
     addBudgetItem,

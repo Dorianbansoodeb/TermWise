@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { RectButton, Swipeable } from 'react-native-gesture-handler';
 import { useAppState } from '../state/AppState';
 import { useTheme } from '../theme/useTheme';
@@ -12,14 +12,11 @@ import type { TransactionItem } from '../types/models';
 
 interface TransactionGroupListProps {
   groups: TransactionGroup[];
+  onEdit?: (transaction: TransactionItem) => void;
   onRemove?: (transaction: TransactionItem) => void;
 }
 
-/// Grouped day sections for the Transactions screen and Dashboard "Recent"
-/// list. Each row is wrapped in a `Swipeable` so the user can swipe left to
-/// reveal Delete — same undo snackbar flow as `removeTransaction(..., {
-/// withUndo: true })` from the parent.
-export function TransactionGroupList({ groups, onRemove }: TransactionGroupListProps) {
+export function TransactionGroupList({ groups, onEdit, onRemove }: TransactionGroupListProps) {
   const theme = useTheme();
   const { formatMoney } = useAppState();
   const rowRefs = useRef<Map<string, Swipeable>>(new Map());
@@ -55,16 +52,8 @@ export function TransactionGroupList({ groups, onRemove }: TransactionGroupListP
                   ? `-${formatMoney(netExpenseAmount(t), { compact: true })}`
                   : `+${formatMoney(t.amount, { compact: true })}`;
 
-              const row = (
-                <View
-                  style={[
-                    styles.txnRow,
-                    idx > 0 && {
-                      borderTopWidth: StyleSheet.hairlineWidth,
-                      borderTopColor: theme.border
-                    }
-                  ]}
-                >
+              const rowBody = (
+                <>
                   <View style={[styles.dot, { backgroundColor: colorForCategory(t.category) }]} />
                   <View style={styles.txnBody}>
                     <Text style={[styles.txnName, { color: theme.text }]}>{t.name}</Text>
@@ -81,16 +70,38 @@ export function TransactionGroupList({ groups, onRemove }: TransactionGroupListP
                   >
                     {value}
                   </Text>
+                </>
+              );
+
+              const row = onEdit ? (
+                <Pressable
+                  onPress={() => onEdit(t)}
+                  style={({ pressed }) => [
+                    styles.txnRow,
+                    idx > 0 && {
+                      borderTopWidth: StyleSheet.hairlineWidth,
+                      borderTopColor: theme.border
+                    },
+                    pressed && { opacity: 0.7 }
+                  ]}
+                >
+                  {rowBody}
+                </Pressable>
+              ) : (
+                <View
+                  style={[
+                    styles.txnRow,
+                    idx > 0 && {
+                      borderTopWidth: StyleSheet.hairlineWidth,
+                      borderTopColor: theme.border
+                    }
+                  ]}
+                >
+                  {rowBody}
                 </View>
               );
 
-              if (!onRemove) {
-                return (
-                  <View key={t.id}>
-                    {row}
-                  </View>
-                );
-              }
+              if (!onRemove) return <View key={t.id}>{row}</View>;
 
               return (
                 <Swipeable
@@ -127,14 +138,8 @@ export function TransactionGroupList({ groups, onRemove }: TransactionGroupListP
 }
 
 const styles = StyleSheet.create({
-  empty: {
-    fontSize: 13,
-    paddingVertical: SPACING.lg,
-    textAlign: 'center'
-  },
-  group: {
-    marginBottom: SPACING.md
-  },
+  empty: { fontSize: 13, paddingVertical: SPACING.lg, textAlign: 'center' },
+  group: { marginBottom: SPACING.md },
   groupHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -147,15 +152,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: 'uppercase'
   },
-  groupTotal: {
-    fontSize: 12,
-    fontWeight: '600'
-  },
-  groupCard: {
-    borderRadius: RADIUS.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden'
-  },
+  groupTotal: { fontSize: 12, fontWeight: '600' },
+  groupCard: { borderRadius: RADIUS.md, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   txnRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -163,27 +161,11 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     backgroundColor: 'transparent'
   },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: SPACING.sm
-  },
-  txnBody: {
-    flex: 1
-  },
-  txnName: {
-    fontSize: 14,
-    fontWeight: '600'
-  },
-  txnCategory: {
-    fontSize: 11,
-    marginTop: 1
-  },
-  txnAmount: {
-    fontSize: 14,
-    fontWeight: '700'
-  },
+  dot: { width: 10, height: 10, borderRadius: 5, marginRight: SPACING.sm },
+  txnBody: { flex: 1 },
+  txnName: { fontSize: 14, fontWeight: '600' },
+  txnCategory: { fontSize: 11, marginTop: 1 },
+  txnAmount: { fontSize: 14, fontWeight: '700' },
   deleteAction: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -191,8 +173,5 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     minHeight: 48
   },
-  deleteLabel: {
-    fontSize: 13,
-    fontWeight: '700'
-  }
+  deleteLabel: { fontSize: 13, fontWeight: '700' }
 });
