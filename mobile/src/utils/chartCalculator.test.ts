@@ -45,8 +45,9 @@ describe('prepareStateForReferenceMonth', () => {
     const march = new Date(2026, 2, 17, 12, 0, 0);
     const june = new Date(2026, 5, 17, 12, 0, 0);
     const stale = buildDemoState(march);
+    const { lastDemoSeedMonthKey: _ignored, ...legacyStale } = stale;
 
-    const hydrated = prepareStateForReferenceMonth(stale, june);
+    const hydrated = prepareStateForReferenceMonth(legacyStale, june);
     const hasJuneExpense = hydrated.transactions.some(
       (t) => t.type === 'expense' && t.date.startsWith('2026-06')
     );
@@ -54,5 +55,6 @@ describe('prepareStateForReferenceMonth', () => {
     expect(hydrated.transactions.length).toBeGreaterThan(stale.transactions.length);
     expect(hasJuneExpense).toBe(true);
     expect(hydrated.monthlySettingsByMonth['2026-06']).toBeDefined();
+    expect(hydrated.lastDemoSeedMonthKey).toBe('2026-06');
   });
 });

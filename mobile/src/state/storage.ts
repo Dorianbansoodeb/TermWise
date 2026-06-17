@@ -1,10 +1,21 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { ChartRange, PersistedState } from '../types/models';
+import type {
+  AppUserSettings,
+  BudgetItem,
+  ChartMode,
+  ChartRange,
+  MonthlySettings,
+  PersistedState,
+  TransactionItem
+} from '../types/models';
 import { buildDemoState } from './demoData';
 import { isSameMonth, monthKey, parseCalendarDate } from '../utils/date';
 import { mergeAppUserSettings } from '../utils/appUserSettings';
 
 const STORAGE_KEY = '@termwise/persisted-state-v1';
+const CURRENT_SCHEMA_VERSION = 1;
+
+type RawPersistedState = Record<string, unknown>;
 
 function normalizeVariableChartRange(value: unknown): ChartRange {
   // Legacy installs may still have `oneWeek` (same 7-day window as sevenDays).
@@ -12,6 +23,56 @@ function normalizeVariableChartRange(value: unknown): ChartRange {
   if (value === 'thirtyDays') return 'thirtyDays';
   if (value === 'currentMonth') return 'currentMonth';
   return 'currentMonth';
+}
+
+function normalizeChartMode(value: unknown): ChartMode {
+  return value === 'total' ? 'total' : 'variable';
+}
+
+function migrateSchemaV1(raw: RawPersistedState): PersistedState {
+  return {
+    schemaVersion: 1,
+    transactions: Array.isArray(raw.transactions) ? (raw.transactions as TransactionItem[]) : [],
+    budgetItems: Array.isArray(raw.budgetItems) ? (raw.budgetItems as BudgetItem[]) : [],
+    monthlySettingsByMonth:
+      raw.monthlySettingsByMonth && typeof raw.monthlySettingsByMonth === 'object'
+        ? (raw.monthlySettingsByMonth as Record<string, MonthlySettings>)
+        : {},
+    monthlyNotes:
+      raw.monthlyNotes && typeof raw.monthlyNotes === 'object'
+        ? (raw.monthlyNotes as Record<string, string>)
+        : {},
+    chartMode: normalizeChartMode(raw.chartMode),
+    variableChartRange: normalizeVariableChartRange(raw.variableChartRange),
+    appUserSettings: mergeAppUserSettings(raw.appUserSettings as AppUserSettings | undefined),
+    lastDemoSeedMonthKey:
+      typeof raw.lastDemoSeedMonthKey === 'string' ? raw.lastDemoSeedMonthKey : undefined
+  };
+}
+
+/// Upgrade raw JSON from AsyncStorage to the current `PersistedState` shape.
+export function migratePersistedState(raw: unknown): PersistedState | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const parsed = raw as RawPersistedState;
+  const version = parsed.schemaVersion;
+  if (typeof version !== 'number' || version < 1 || version > CURRENT_SCHEMA_VERSION) {
+    return null;
+  }
+
+  // Add future version steps here (e.g. migrateSchemaV2 → migrateSchemaV1).
+  let state: PersistedState;
+  switch (version) {
+    case 1:
+      state = migrateSchemaV1(parsed);
+      break;
+    default:
+      return null;
+  }
+
+  state.variableChartRange = normalizeVariableChartRange(state.variableChartRange);
+  state.appUserSettings = mergeAppUserSettings(state.appUserSettings);
+  return state;
 }
 
 /// When persisted demo data is from a prior month, seed the current month so
@@ -24,10 +85,18 @@ export function prepareStateForReferenceMonth(
   const hasExpenseThisMonth = state.transactions.some(
     (t) => t.type === 'expense' && isSameMonth(parseCalendarDate(t.date), referenceDate)
   );
+  const alreadySeededThisMonth = state.lastDemoSeedMonthKey === mk;
+
   let transactions = state.transactions;
-  if (!hasExpenseThisMonth && state.transactions.some((t) => t.type === 'expense')) {
+  let lastDemoSeedMonthKey = state.lastDemoSeedMonthKey;
+  if (
+    !hasExpenseThisMonth &&
+    !alreadySeededThisMonth &&
+    state.transactions.some((t) => t.type === 'expense')
+  ) {
     const demo = buildDemoState(referenceDate);
     transactions = [...state.transactions, ...demo.transactions];
+    lastDemoSeedMonthKey = mk;
   }
 
   const monthlySettingsByMonth = { ...state.monthlySettingsByMonth };
@@ -39,18 +108,14 @@ export function prepareStateForReferenceMonth(
     };
   }
 
-  return { ...state, transactions, monthlySettingsByMonth };
+  return { ...state, transactions, monthlySettingsByMonth, lastDemoSeedMonthKey };
 }
 
 export async function loadPersistedState(): Promise<PersistedState | null> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedState;
-    if (!parsed || parsed.schemaVersion !== 1) return null;
-    parsed.variableChartRange = normalizeVariableChartRange(parsed.variableChartRange);
-    parsed.appUserSettings = mergeAppUserSettings(parsed.appUserSettings);
-    return parsed;
+    return migratePersistedState(JSON.parse(raw));
   } catch (err) {
     console.warn('[termwise] failed to load persisted state', err);
     return null;
