@@ -24,10 +24,21 @@ export function TransactionsScreen() {
   const insets = useSafeAreaInsets();
   const { transactions, removeTransaction } = useAppState();
   const [filter, setFilter] = useState<TransactionFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+
+  const categories = useMemo(() => {
+    const names = new Set<string>();
+    for (const txn of transactions) {
+      const name = txn.category.trim();
+      if (name) names.add(txn.category);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [transactions]);
 
   const groups = useMemo(
-    () => groupTransactionsByDay(filterTransactions(transactions, filter)),
-    [transactions, filter]
+    () =>
+      groupTransactionsByDay(filterTransactions(transactions, filter, categoryFilter)),
+    [transactions, filter, categoryFilter]
   );
 
   return (
@@ -72,6 +83,44 @@ export function TransactionsScreen() {
             );
           })}
         </View>
+        {categories.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryScroll}
+          >
+            {(['__all__', ...categories] as const).map((value) => {
+              const selected =
+                value === '__all__' ? categoryFilter === null : categoryFilter === value;
+              const label = value === '__all__' ? 'All categories' : value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => setCategoryFilter(value === '__all__' ? null : value)}
+                  style={[
+                    styles.categoryPill,
+                    {
+                      backgroundColor: selected ? theme.surface : theme.surfaceMuted,
+                      borderColor: selected ? theme.border : 'transparent'
+                    }
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.categoryPillLabel,
+                      {
+                        color: selected ? theme.text : theme.textMuted,
+                        fontWeight: selected ? '700' : '500'
+                      }
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
         <TransactionGroupList
           groups={groups}
           onRemove={(txn) => removeTransaction(txn.id, { withUndo: true })}
@@ -112,6 +161,19 @@ const styles = StyleSheet.create({
     borderColor: 'transparent'
   },
   filterLabel: {
+    fontSize: 12
+  },
+  categoryScroll: {
+    gap: SPACING.xs,
+    paddingVertical: 2
+  },
+  categoryPill: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
+    borderRadius: RADIUS.pill,
+    borderWidth: StyleSheet.hairlineWidth
+  },
+  categoryPillLabel: {
     fontSize: 12
   }
 });

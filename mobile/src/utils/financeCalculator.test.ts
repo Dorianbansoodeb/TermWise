@@ -5,6 +5,7 @@ import {
   actualSpentForCategory,
   budgetDifference,
   budgetPercentUsed,
+  filterTransactions,
   findFixedBillForCategory,
   profileExpenseBreakdownRows,
   profileMonthSummaries,
@@ -411,5 +412,45 @@ describe('profileExpenseBreakdownRows', () => {
     const rows = profileExpenseBreakdownRows(items, 100, 80);
     expect(rows).toHaveLength(1);
     expect(rows[0].category).toBe('Rent');
+  });
+});
+
+const mkTxn = (
+  id: string,
+  category: string,
+  type: TransactionItem['type']
+): TransactionItem => ({
+  id,
+  category,
+  type,
+  amount: 10,
+  name: category,
+  note: '',
+  date: '2026-06-01',
+  createdAt: '2026-06-01T12:00:00.000Z',
+  savedApplied: 0,
+  undoable: false
+});
+
+describe('filterTransactions', () => {
+  const txns = [
+    mkTxn('1', 'Groceries', 'expense'),
+    mkTxn('2', 'Salary', 'income'),
+    mkTxn('3', 'Rent', 'expense')
+  ];
+
+  it('returns all transactions when filter is all', () => {
+    expect(filterTransactions(txns, 'all')).toHaveLength(3);
+  });
+
+  it('filters by expense or income type', () => {
+    expect(filterTransactions(txns, 'expense')).toHaveLength(2);
+    expect(filterTransactions(txns, 'income')).toHaveLength(1);
+  });
+
+  it('combines type and category filters', () => {
+    expect(filterTransactions(txns, 'expense', 'Groceries')).toEqual([txns[0]]);
+    expect(filterTransactions(txns, 'income', 'Groceries')).toEqual([]);
+    expect(filterTransactions(txns, 'all', 'Rent')).toEqual([txns[2]]);
   });
 });
