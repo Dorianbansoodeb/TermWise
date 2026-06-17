@@ -12,7 +12,8 @@ import {
   totalBudgeted,
   unallocatedRow,
   usableBudgetAfterSavings,
-  variableCategoryProgress
+  variableCategoryProgress,
+  variableRiskStatus
 } from './financeCalculator';
 
 const mk = (
@@ -411,5 +412,26 @@ describe('profileExpenseBreakdownRows', () => {
     const rows = profileExpenseBreakdownRows(items, 100, 80);
     expect(rows).toHaveLength(1);
     expect(rows[0].category).toBe('Rent');
+  });
+});
+
+describe('variableRiskStatus', () => {
+  const limit = 1000;
+
+  it('defaults to 90% on-track threshold', () => {
+    expect(variableRiskStatus(899, limit)).toBe('onTrack');
+    expect(variableRiskStatus(901, limit)).toBe('watch');
+    expect(variableRiskStatus(1001, limit)).toBe('overBudgetRisk');
+  });
+
+  it('honors a custom warning threshold percent', () => {
+    expect(variableRiskStatus(749, limit, 75)).toBe('onTrack');
+    expect(variableRiskStatus(751, limit, 75)).toBe('watch');
+    expect(variableRiskStatus(1000, limit, 100)).toBe('onTrack');
+    expect(variableRiskStatus(1001, limit, 100)).toBe('overBudgetRisk');
+  });
+
+  it('returns onTrack when budget limit is zero', () => {
+    expect(variableRiskStatus(500, 0, 90)).toBe('onTrack');
   });
 });

@@ -36,6 +36,7 @@ export function DashboardScreen() {
     setChartMode,
     setVariableChartRange,
     referenceDate,
+    appUserSettings,
     removeTransaction,
     formatMoney
   } = useAppState();
@@ -48,7 +49,8 @@ export function DashboardScreen() {
     transactions,
     currentDayOfMonth: ctx.currentDayOfMonth,
     daysInMonth: ctx.daysInMonth,
-    referenceDate
+    referenceDate,
+    warningThresholdPercent: appUserSettings.budgetWarningThresholdPercent
   });
   const totalPace = evaluateTotalPace({
     transactions,

@@ -3,6 +3,7 @@ import {
   Alert,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -40,6 +41,7 @@ export function SettingsScreen(_props: Props) {
     appUserSettings,
     updateAppUserSettings,
     resetToDemo,
+    exportSnapshot,
     formatMoney
   } = useAppState();
 
@@ -55,6 +57,20 @@ export function SettingsScreen(_props: Props) {
 
   const appVersion =
     Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? '0.1.0';
+
+  const onExport = async () => {
+    const snapshot = exportSnapshot();
+    const json = JSON.stringify(snapshot, null, 2);
+    const filename = `termwise-export-${new Date().toISOString().slice(0, 10)}.json`;
+    try {
+      await Share.share({
+        message: json,
+        title: filename
+      });
+    } catch {
+      Alert.alert('Export failed', 'Could not open the share sheet. Try again.');
+    }
+  };
 
   const onResetDemo = () => {
     Alert.alert(
@@ -174,22 +190,29 @@ export function SettingsScreen(_props: Props) {
         <Card>
           <Text style={[styles.subhead, { color: theme.text }]}>Month start</Text>
           <Text style={[styles.helper, { color: theme.textMuted }]}>
-            Calendar month starting on the 1st (default). Custom start days will be supported later.
+            Calendar month starting on the 1st (default).
           </Text>
-          {/* TODO: Honor custom month start in date windows / rollover when budget engine supports it. */}
           <ChoiceRow
             label="1st of month"
             selected={appUserSettings.monthStartDay === 1}
             onPress={() => updateAppUserSettings({ monthStartDay: 1 })}
             theme={theme}
           />
+          <ChoiceRow
+            label="Custom start day"
+            selected={false}
+            onPress={() => {}}
+            theme={theme}
+            disabled
+            subtitle="Coming soon"
+          />
         </Card>
         <Card>
           <Text style={[styles.subhead, { color: theme.text }]}>Budget warning threshold</Text>
           <Text style={[styles.helper, { color: theme.textMuted }]}>
-            Saved locally for future use when we surface %‑of‑limit warnings in the app.
+            When projected variable spending crosses this % of your limit, the dashboard pace
+            badge moves from On Track to Watch.
           </Text>
-          {/* TODO: Connect to dashboard / pace UI when threshold-driven warnings ship. */}
           <View style={styles.inlineChoices}>
             {THRESHOLDS.map((pct) => (
               <MiniChip
@@ -206,26 +229,31 @@ export function SettingsScreen(_props: Props) {
         <SectionTitle theme={theme} title="Notifications" />
         <Card>
           <Text style={[styles.helper, { color: theme.textMuted }]}>
-            Toggles are saved locally only — no reminders are sent yet.
+            Reminders are not sent yet — toggles are disabled until push/local scheduling ships.
           </Text>
-          {/* TODO: Push notifications + local scheduling when backend / OS permissions are ready. */}
           <ToggleRow
             label="Bill due reminders"
             value={appUserSettings.billDueRemindersEnabled}
             onValueChange={(v) => updateAppUserSettings({ billDueRemindersEnabled: v })}
             theme={theme}
+            disabled
+            subtitle="Coming soon"
           />
           <ToggleRow
             label="Budget warning reminders"
             value={appUserSettings.budgetWarningRemindersEnabled}
             onValueChange={(v) => updateAppUserSettings({ budgetWarningRemindersEnabled: v })}
             theme={theme}
+            disabled
+            subtitle="Coming soon"
           />
           <ToggleRow
             label="Weekly spending summary"
             value={appUserSettings.weeklySpendingSummaryEnabled}
             onValueChange={(v) => updateAppUserSettings({ weeklySpendingSummaryEnabled: v })}
             theme={theme}
+            disabled
+            subtitle="Coming soon"
           />
         </Card>
 
@@ -237,12 +265,10 @@ export function SettingsScreen(_props: Props) {
             are kept.
           </Text>
           <Pressable
-            style={[styles.placeholderBtn, { borderColor: theme.border }]}
-            disabled
-            onPress={() => {}}
+            style={[styles.actionBtn, { borderColor: theme.border }]}
+            onPress={onExport}
           >
-            <Text style={[styles.placeholderBtnText, { color: theme.textMuted }]}>Export data</Text>
-            <PillBadge label="Soon" tone="neutral" />
+            <Text style={[styles.actionBtnText, { color: theme.text }]}>Export data</Text>
           </Pressable>
           <Pressable
             style={[styles.placeholderBtn, { borderColor: theme.border, marginTop: SPACING.sm }]}
@@ -292,26 +318,36 @@ function ChoiceRow({
   label,
   selected,
   onPress,
-  theme
+  theme,
+  disabled,
+  subtitle
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
   theme: ReturnType<typeof useTheme>;
+  disabled?: boolean;
+  subtitle?: string;
 }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.choice,
         {
           borderColor: selected ? theme.primary : theme.border,
           backgroundColor: selected ? theme.surfaceMuted : theme.surface,
-          opacity: pressed ? 0.85 : 1
+          opacity: disabled ? 0.55 : pressed ? 0.85 : 1
         }
       ]}
     >
-      <Text style={[styles.choiceLabel, { color: theme.text }]}>{label}</Text>
+      <View style={styles.choiceTextCol}>
+        <Text style={[styles.choiceLabel, { color: theme.text }]}>{label}</Text>
+        {subtitle ? (
+          <Text style={[styles.choiceSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>
+        ) : null}
+      </View>
       {selected ? (
         <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 14 }}>✓</Text>
       ) : null}
@@ -350,19 +386,29 @@ function ToggleRow({
   label,
   value,
   onValueChange,
-  theme
+  theme,
+  disabled,
+  subtitle
 }: {
   label: string;
   value: boolean;
   onValueChange: (v: boolean) => void;
   theme: ReturnType<typeof useTheme>;
+  disabled?: boolean;
+  subtitle?: string;
 }) {
   return (
-    <View style={styles.toggleRow}>
-      <Text style={[styles.toggleLabel, { color: theme.text }]}>{label}</Text>
+    <View style={[styles.toggleRow, disabled ? { opacity: 0.55 } : null]}>
+      <View style={styles.toggleTextCol}>
+        <Text style={[styles.toggleLabel, { color: theme.text }]}>{label}</Text>
+        {subtitle ? (
+          <Text style={[styles.toggleSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>
+        ) : null}
+      </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
+        disabled={disabled}
         trackColor={{ false: theme.border, true: theme.primary }}
         thumbColor={theme.surface}
       />
@@ -409,6 +455,14 @@ const styles = StyleSheet.create({
   choiceLabel: {
     fontSize: 14,
     fontWeight: '600'
+  },
+  choiceTextCol: {
+    flex: 1,
+    paddingRight: SPACING.md
+  },
+  choiceSubtitle: {
+    fontSize: 11,
+    marginTop: 2
   },
   preview: {
     fontSize: 12,
@@ -457,9 +511,28 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(128,128,128,0.15)'
   },
   toggleLabel: {
-    fontSize: 14,
+    fontSize: 14
+  },
+  toggleTextCol: {
     flex: 1,
     paddingRight: SPACING.md
+  },
+  toggleSubtitle: {
+    fontSize: 11,
+    marginTop: 2
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: StyleSheet.hairlineWidth
+  },
+  actionBtnText: {
+    fontSize: 14,
+    fontWeight: '600'
   },
   placeholderBtn: {
     flexDirection: 'row',
