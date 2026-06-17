@@ -129,6 +129,16 @@ export function SpendTrendChart({ series, height = 220 }: SpendTrendChartProps) 
     return ys;
   }, [series.limitLines, innerH, innerW, dataMax, margin.top]);
 
+  if (series.isEmpty) {
+    return (
+      <View style={[styles.container, styles.empty, { height }]}>
+        <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+          No spending in this period yet
+        </Text>
+      </View>
+    );
+  }
+
   const limitLineColor = (role: ChartSeries['limitLines'][number]['role']) => {
     switch (role) {
       case 'spendLimit':
@@ -307,6 +317,16 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     width: '100%'
+  },
+  empty: {
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  emptyText: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingHorizontal: SPACING.lg
   },
   tooltip: {
     position: 'absolute',
